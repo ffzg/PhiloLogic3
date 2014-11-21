@@ -21,6 +21,9 @@
 # along with this program; if not, write to Affero, Inc.,
 # 510 Third Street, Suite 225, San Francisco, CA 94107 USA.
 
+use Classic::Perl;
+
+
 %fields = (
     'title',        0,
     'author',       1,

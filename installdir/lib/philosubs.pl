@@ -1,4 +1,5 @@
 # $Id: philosubs.pl,v 2.11 2004/11/16 00:44:05 o Exp $
+use Classic::Perl;
 do "philo-db.cfg";   # read in the database-specific configuration
 
 &LoadLocalMessages;	 # read in the language-specific mesages file specified in philo-db.cfg

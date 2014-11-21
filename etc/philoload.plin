@@ -10,6 +10,7 @@
 # [--loadsql] [--sqluser] [--sqlpass=password] [--nosqlpass] 
 # [--delete] [--dontclean] [--linksourcetexts] files1.xml file3* *.sgml
 
+use Classic::Perl;
 use Time::Local;
 use Getopt::Long;
 use Cwd qw(chdir getcwd);

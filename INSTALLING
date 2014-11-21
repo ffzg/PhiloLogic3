@@ -9,6 +9,8 @@ support@philologic.uchicago.edu with your reports.
 
 depends: gawk, perl, gdbm/gdbm-dev, gnutar, egrep, GNU ld (binutils),
 	 gnu sort (coreutils)
+
+perl module dependencies: Classic::Perl
  
 optional depends: mysql, agrep
 

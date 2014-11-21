@@ -2906,6 +2906,18 @@ fi
 
   fi
 fi
+
+## Hack to test if GCC version is 4.4 or lower
+GCCVERSION=`$CC -dumpversion`
+echo 'checking for gcc version...' $GCCVERSION
+GCCTEST=`expr 4.5 \<= $GCCVERSION`
+if (( GCCTEST == 1 )); then
+echo 'configure: error: PhiloLogic only compiles on GCC 4.4.x or older.'
+echo 'Please change your default compiler. This can be done with the following command: export CC=/path/to/compiler'
+echo ''
+exit
+fi
+
 if test -z "$CC"; then
   # Extract the first word of "cc", so it can be a program name with args.
 set dummy cc; ac_word=$2

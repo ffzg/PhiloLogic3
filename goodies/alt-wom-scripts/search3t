@@ -21,6 +21,7 @@
 # along with this program; if not, write to Affero, Inc.,
 # 510 Third Street, Suite 225, San Francisco, CA 94107 USA.
 
+use Classic::Perl;
 no strict "refs";
 # require 5.002;      You can enable this if you want
 $PHILOSITECFG = "${prefix}/etc/philologic";

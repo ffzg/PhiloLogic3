@@ -1,3 +1,5 @@
+use Classic::Perl;
+
 # $Id: split.plin,v 2.1 2004/08/23 21:45:03 o Exp $
 
 # philologic 2.8 -- TEI XML/SGML Full-text database engine
