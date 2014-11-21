@@ -1,0 +1,49 @@
+INSTALL
+
+To install, with su privileges copy the Obliterator directory and Obliterator.pm somewhere into your Perl @INC path, preferably where your other Perl modules are kept. 
+
+USAGE
+
+use Obliterator;
+
+All scripts described in the ISCII91 standard are covered. When initializing with an ISCII string, specify the script with the three-character mnemonic from Annex A of the standard.
+
+    * Assamese: asm
+    * Bengali: bng
+    * Devanagari: dev
+    * Gujarati: gjr
+    * Kanada: knd
+    * Malayalam: mlm
+    * Oriya: ori
+    * Punjabi: pnj
+    * Tamil: tam
+    * Telugu: tlg 
+
+Initialize an Obliterator object: 
+
+    $str = "¤ÎåµèÎÂÚê";
+    $myhw = Obliterator->new();
+    $myhw->iscii->bng("$str");
+
+Once the Obliterator object has been created, we have a number of conversion methods at our disposal.
+
+    * indutf: convert from non-UTF indic to UTF indic
+    * romutf: convert from non-UTF indic, UTF indic, or SGML ents to romanized UTF string with diacritics
+    * romascii: convert from non-UTF indic, UTF indic, or SGML ents to romanized ASCII string
+    * sgmlrom: convert from non-UTF indic / UTF indic to SGML entities
+    * to_iscii: convert from UTF indic to ISCII 
+
+So for example:
+
+    printf "INDUTF: %s ROMASCII: %s\n", $myhw->indutf, $myhw->romascii;
+
+Debugging can be turned on as follows:
+
+    Obliterator->debug(n); # where 1<=n<=8
+
+Currently debugging needs to be set for each new Obliterator instance. Debugging levels seem to behave a little bit erratically in certain instances. Hopefully, we'll get to fixing this at some point.
+
+To fix:
+
+    Direct conversion from UTF indic to romanized ASCII does not work. You need to initialize as UTF, convert to ISCII, and from there to ROMASCII.
+    Debugging is a little weird and unhelpful.

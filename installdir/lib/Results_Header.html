@@ -1,0 +1,182 @@
+Content-type: text/html; charset=UTF-8
+
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>Philologic Results</title>
+<style type="text/css">
+
+/* The following block of CSS is for handling basic layout */
+/* for the default PhiloLogic display.  Delete or modify as */
+/* required.  It is taken from: */
+/* Theme Name: Geeklog Squeaky-Clean (v1.0)*/ 
+/* Portal package: Geeklog 1.3.5*/
+/* Theme Developer: Simon Lord (slord@mac.com)	*/
+/* Theme Code Copyright (c) 2002 by Simon Lord,	*/
+/* reproduction is permitted providing author credits remain.	*/
+/* Creation Date: 04/02/2002	*/
+/* Modification Date: 24/04/2002*/
+
+H1 	{ color: black; font-size: 14px; font-weight: bold; font-family: verdana, arial, sans-serif; }
+H2 	{ color: #000000; font-weight: bold; font-size: 12px; font-family: Arial, Verdana, Helvetica, sans-serif }
+
+.box				{ color: #000; scrollbar-face-color: #0066FF; scrollbar-highlight-color: #00ccff; scrollbar-shadow-color: #003366; scrollbar-track-color: #003366  }
+
+body	{ background-color: #ffffff; }
+
+.box	{ color: #000; scrollbar-face-color: #0066FF; scrollbar-highlight-color: #00ccff; scrollbar-shadow-color: #003366; scrollbar-track-color: #003366  }
+
+A:link	{ color: #00c; font-size: 12px; line-height: 14px; font-family: Arial, Helvetica, Verdana; text-decoration: none }
+A:visited	{ color: #606; font-size: 12px; line-height: 14px; font-family: Arial, Helvetica, Verdana; text-decoration: none }
+A:hover		{ color: #c03; font-size: 12px; line-height: 14px; font-family: Arial, Helvetica, Verdana; text-decoration: underline overline }
+A.navbar:link 	   	{ color: #d7d8e1; font-weight: bold; font-size: 10px; line-height: 12px; font-family: Verdana, Helvetica, Arial, sans-serif; text-decoration: none }
+A.navbar:visited    { color: #d7d8e1; font-weight: bold; font-size: 10px; line-height: 12px; font-family: Verdana, Helvetica, Arial, sans-serif; text-decoration: none }
+A.navbar:hover    	{ color: #ffcc00; font-weight: bold; font-size: 10px; line-height: 12px; font-family: Verdana, Helvetica, Arial, sans-serif; text-decoration: none }
+A.menuPick:link 	{ color: #00c; font-size: 10px; line-height: 12px; font-family: Verdana, Helvetica, Arial, sans-serif; text-decoration: none }
+A.menuPick:visited  { color: #606; font-size: 10px; line-height: 12px; font-family: Verdana, Helvetica, Arial, sans-serif; text-decoration: none }
+A.menuPick:hover 	{ color: #c03; font-size: 10px; line-height: 12px; font-family: Verdana, Helvetica, Arial, sans-serif; text-decoration: none }
+TD	{ color: #000000; font-size: 12px; font-family: Arial, Verdana, Helvetica, sans-serif }
+TD.bold	{ color: #000000; font-weight: bold; font-size: 12px; font-family: Arial, Verdana, Helvetica, sans-serif }
+SPAN.block	{ color: #000000; font-family: Verdana, Arial, Helvetica, sans-serif; font-size: 12px; }
+SPAN.story	{ color: #000000; font-style: italic; font-family: Verdana, Arial, Helvetica, sans-serif; font-size: 12px; }
+SPAN.display	{ color: #dde3ef; font-size: 10px; font-family: Verdana, Arial, Helvetica, sans-serif }
+input	{ color: #000033; background-color: #dde3ef;  font-family: Verdana, Helvetica, sans-serif;  font-size: 10px;  font-weight: plain; }
+TEXTAREA	{ color: #000033; font-size: 10px; font-family: Verdana, Helvetica, Arial; background-color:  #dde3ef }
+select	{ color: #000033; font-weight: normal; font-size: 10px; font-family: Verdana, Helvetica, sans-serif; background-color: #dde3ef; text-indent: 10px; }
+file 	{ font-family: Verdana, Helvetica, sans-serif;  font-size: 10px; font-weight: normal; background-color : #eff0f3; }
+button 	{ font-family: Verdana, Helvetica, sans-serif;  font-size: 14px; font-weight: normal; border-color: #000033; border-style: solid; text-indent: 12px; }
+</style>
+
+<style type="text/css">
+<!--
+/* The following is PhiloLogic specific CSS to handle TEI encoding */
+/* Edit as you see fit, but you will probably need to modify traps in */
+/* philosubs.pl in the database lib/ directory.  Yes, indeed, it is */
+/* a bit fiddly.  One day, XSLT!  If you do it, please let us know. */
+span.emph {font-weight: bolder; }
+span.emphsc {FONT-SIZE: 12px;}
+span.hi   {font-weight: bolder;}
+span.foreign {font-style: italic;}
+span.bibl {font-style: italic;}
+span.title     {font-style: italic;}
+span.hiitalic  {font-style: italic;}
+span.hiunderline {text-decoration: underline;}
+span.hibold   {font-weight: bolder;}
+span.doctitle {display: block; text-align: center; FONT-SIZE: 24px; LINE-HEIGHT: 1.5;}
+span.byline {display: block; text-align: center; FONT-SIZE: 16px; LINE-HEIGHT: 1.5;}
+span.pubplace {display: block; text-align: center; FONT-SIZE: 16px; LINE-HEIGHT: 1.5;}
+span.docedition {display: block; text-align: center; FONT-SIZE: 16px; LINE-HEIGHT: 1.5;}
+span.publisher {display: block; text-align: center; FONT-SIZE: 16px; LINE-HEIGHT: 1.5;}
+span.docimprint {display: block; text-align: center; FONT-SIZE: 16px; LINE-HEIGHT: 1.5;}
+span.addrline {display: block; text-align: center; FONT-SIZE: 16px; LINE-HEIGHT: 1.5;}
+span.docauthor {display: block; text-align: center; FONT-SIZE: 20px; LINE-HEIGHT: 1.5;}
+span.docdate {display: block; text-align: center; FONT-SIZE: 20px; LINE-HEIGHT: 1.5;}
+span.opener   {display: block; text-align: center;}
+span.label   {display: block; text-align: center;}
+span.signed   {display: block; text-align: right;}
+span.stage    {display: block; text-align: right; font-style: italic; margin-left: 120px;}
+span.speaker  {display: block; text-align: center; FONT-SIZE: 16;}
+span.epigraph {display: block; margin-left: 300px;}
+span.salute   {display: block; text-align: center;}
+span.trailer  {display: block; text-align: center;}
+span.closer   {display: block; text-align: center;}
+span.item     {display: block; text-align: left;}
+span.role     {display: block; text-align: left; margin-left: 100px; margin-right: 100px}
+span.argument {display: block; text-align: left; margin-left: 100px; margin-right: 100px}
+span.roledesc {display: block; text-align: right; margin-right: 100px}
+span.l        {display: block; text-align: left;}
+span.small   {FONT-SIZE: 11px;}
+span.hismallcap {FONT-SIZE: 12px;}
+span.head    {display: block; text-align: center; font-weight: bolder; FONT-SIZE: 18px; LINE-HEIGHT: 1.5;}
+span.notetarget {FONT-SIZE: 12px; text-decoration: underline; vertical-align: super;}
+span.footnote {display: block; FONT-SIZE: 12px; margin-left: 60px; margin-right: 40px;}
+span.marginnote {display: block; FONT-SIZE: 12px; text-align: right;}
+span.inlinenote {display: block; FONT-SIZE: 12px;}
+span.generalnote {display: block; FONT-SIZE: 12px;}
+span.endnote {display: block; FONT-SIZE: 12px;}
+span.refalignright {display: block; text-align: right;}
+span.mstoneid {display: block; FONT-SIZE: 12px; text-align: right;}
+span.mstonen {display: block; FONT-SIZE: 12px; text-align: right;}
+span.mstonetype {display: block; text-align: center;}
+span.mwright {display: block; FONT-SIZE: 12px; text-align: right;}
+span.authfreqindt {display: block; text-align: left; margin-left: 60px;}
+span.perfreqindt {display: block; text-align: left; margin-left: 45px;}
+span.navhead {display: block; text-align: center; font-size: 16; font-weight: bold;}
+span.navbiblio {display: block; font-size: 14;}
+span.navlevel1 {display: block; text-align: left; font-size: 14;}
+span.navlevel2 {display: block; text-align: left; margin-left: 40px; FONT-SIZE: 14;}
+span.navlevel3 {display: block; text-align: left; margin-left: 60px; FONT-SIZE: 12;}
+span.projecthead { text-align: right; font-size: 20; color: #000000;}
+
+/* For pop-in notes */
+.hiddennote {
+        display: none;
+        margin: 5px;
+        border: 1px solid #242e55;
+        background-color: #dde3ef;
+        padding: 2px;
+}
+
+-->
+</style>
+<!-- Needed JavaScript Code -->
+<script language="JavaScript">
+    var cleared = 0;
+
+    function clearField(field)
+    {
+        if (cleared != 1) {
+            field.value = ""
+            cleared = 1
+        } else {
+            cleared = 0
+        }
+    }
+function toggleMenu(currElem,nextPos) {
+        menuObj = (document.all) ? eval("document.all." + currElem + ".style") : eval("document." + currElem)
+        if (toggleMenu.arguments.length == 1)
+                nextPos = (parseInt(menuObj.top) == -5) ? -90 : -5
+                if (document.all)
+                        menuObj.pixelTop = nextPos
+                else
+                        menuObj.top = nextPos
+}
+
+</script>
+
+<!-- These are for the pop-in notes: put in full paths and uncomment --> 
+<!-- <script src="prototype.lite.js"></script>
+<script src="moo.ajax.js"></script>
+<script src="notes.js"></script>
+-->
+
+<!-- Your header should go here.  -->
+</head>
+<body text="#000000" leftmargin="0" marginheight="0" marginwidth="0" topmargin="0">
+<br/>
+<a href="http://philologic.uchicago.edu">
+<img src="ZZZPHILOWHITEPNGZZZ" alt="" border="0"></a>
+
+<table bgcolor="#556289" width="100%" border="0" cellspacing="0" cellpadding="2">
+<tr>
+<td align ="left"><span class="display">&nbsp;&nbsp;Welcome to  PhiloLogic</span></td>
+<td align="right">&nbsp;</td>
+</tr>
+</table>
+
+<table width="100%" border="0" cellspacing="0" cellpadding="0">
+<tr>
+<td colspan="2" valign="bottom" bgcolor="#242e55">&nbsp;&nbsp;&nbsp;<a class="navbar" href="http://philologic.uchicago.edu/">home</a><span class="welcomeName">&nbsp;|&nbsp;</span>
+<a class="navbar" href="http://humanities.uchicago.edu./orgs/ARTFL/">the ARTFL project</a><span class="welcomeName">&nbsp;|&nbsp;</span>
+<a class="navbar" href="http://philologic.uchicago.edu/download.php">download</a><span class="welcomeName">&nbsp;|&nbsp;</span>
+<a class="navbar" href="http://philologic.uchicago.edu/documentation.php">documentation</a><span class="welcomeName">&nbsp;|&nbsp;</span>
+<a class="navbar" href="http://philologic.uchicago.edu/samples.php">sample databases</a><span class="welcomeName">&nbsp;|&nbsp;</span>
+&nbsp;</td>
+</tr>
+</table>
+<table bgcolor="#E1E2E5" border="0" cellspacing="0" cellpadding="5" align="center" width="98%">
+<tr>
+<td colspan="2" width="100%" valign="top" bgcolor="#ffffff">
+<!-- START OF CONTENT AREA -->
+
+

@@ -1,0 +1,81 @@
+# $Id: split.plin,v 2.1 2004/08/23 21:45:03 o Exp $
+
+# philologic 2.8 -- TEI XML/SGML Full-text database engine
+# Copyright (C) 2004 University of Chicago
+# 
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the Affero General Public License as published by
+# Affero, Inc.; either version 1 of the License, or (at your option)
+# any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# Affero General Public License for more details.
+# 
+# You should have received a copy of the Affero General Public License
+# along with this program; if not, write to Affero, Inc.,
+# 510 Third Street, Suite 225, San Francisco, CA 94107 USA.
+
+if ( $#ARGV != 1 || !( $ARGV[1]=~/\.files$/ ))
+  {
+     print STDERR "newsplit: Bad arguments!\n";
+     exit 1;
+  }
+
+$batchsize = $ARGV[0];
+
+$string = "abcdefghijklmnopqrstuvwxyz";
+@chars = split ("", $string);
+
+($basename = $ARGV[1])=~s/\.files$//;
+$filename = "$basename-aa";
+$i = $j = 0;
+
+#$filename = "$basename-$chars[$i]$chars[$j]";
+
+open (INFILE, $ARGV[1]);
+#open (OUTFILE, ">$filename");
+
+$k = 0;
+while (<INFILE>) 
+      {
+
+	if (! ($k % $batchsize))
+          {
+            close OUTFILE;
+
+	    $filename = "$basename-$chars[$i]$chars[$j]";
+	    open (OUTFILE, ">$filename");
+
+	    $j++;
+
+	    if ( ! ($j % ($#chars + 1)) ) 
+	      {
+	        $i++;
+	        $j = 0;
+              }
+	  }
+
+
+        $k++;
+#	print OUTFILE $_;
+	split;
+
+	$howmany = ($#_ - 1) / 2;
+
+	$offset = 0;
+
+	for ($l=0; $l<$howmany; $l++)
+	  {
+	    print OUTFILE $_[0] . " ";
+	    print OUTFILE $_[1] . "/" . $_[2 + 2 * $l] . " ";
+	    print OUTFILE $offset . " " . $_[3 + 2 * $l] . "\n";
+	    $offset += $_[3 + 2 * $l];
+	  }
+	
+      }
+
+exit 0;
+
+

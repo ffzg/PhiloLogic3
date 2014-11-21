@@ -1,0 +1,762 @@
+#!@PERL@
+# $Id:  dbbiblio.plin
+# philologic 2.8 -- TEI XML/SGML Full-text database engine
+# Copyright (C) 2004 University of Chicago
+# 
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the Affero General Public License as published by
+# Affero, Inc.; either version 1 of the License, or (at your option)
+# any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# Affero General Public License for more details.
+# 
+# You should have received a copy of the Affero General Public License
+# along with this program; if not, write to Affero, Inc.,
+# 510 Third Street, Suite 225, San Francisco, CA 94107 USA.
+
+# ==============================================================
+# dbbiblio: modified version of the poor man's bibliographic 
+# metadata extractor for a very small subset of DocBook metadata.
+# PROOF OF CONCEPT ONLY.   One could extend this if desired.
+# ==============================================================
+# Experimental TEI and MEP XML and SGML metadata extractor using a simple
+# XPATH grabber.  This extracts standard bibliographic data from
+# various TEI Lite locations in the order in which they are 
+# found in the list of paths for each field.  You can add to the
+# list and change the order to extract things you want.  This does
+# NOT identify attributes or number elements.  If you need this
+# or other extensions, use the XML:Twig perl package in the 
+# PhiloLogic distribution.  Consult documentation for bibliographic 
+# data field structures.
+#
+# * will match all elements below the specified ... hopefully in
+# the order in which the elements have data. Ex:
+#     "mepheader/sourcedesc/bibl/*"      will match
+#      mepheader/sourcedesc/bibl/ and mepheader/sourcedesc/bibl/title/
+#
+# This is known to work with various TEI Lite SGML and XML encodings.
+# Also will handle MEP headers and have added CES header info where
+# I have it.  March 15, 2005
+#
+# Robert V. notes that my implementation is not XPATH compliant:
+#      you terminate the path with a "/" 
+#      you also lowercasify all the elements and xpath element 
+#          names are case-sensitive.
+# True enuff.... Maybe I'll fix it at one point.
+#
+# ====================== Settings ===============================
+
+$intfs = "<fs/>";   # Don't touch this for now.  Using it as
+                    # an internal field seperator when you have
+                    # multiple entries.
+# Tags to ignore.  This is to simplify processing and to eliminate
+# empty elements in SGML (XML Empty elements are ignored).
+@tagstoignore = ("p", "emph", "hi", "br");
+
+# Begin and End at the beginning and the end.
+$ENDTAG = "<\/teiheader|<\/mepheader|<\/ceshead|<\/bookinfo";
+$STARTTAG = "<teiheader|<mepheader|<ceshead|<bookinfo";
+
+# An ugly little hack to flatten selected tags/attributes into
+# pseudo xpaths so I can distinguish between them.  Yes, right about
+# now we should be using XML::Twig.  Normally set to 0 and modify 
+# xpaths below.
+$flattenattribs = 1;
+@tagstoflatten = ('<keywords scheme="lcsh">',
+                  '<keywords scheme="genre">',
+                  '<keywords scheme="authorgender">',
+                  '<keywords scheme="period">',
+                  '<imprint type="artfl">',
+		  '<idno type="wwp">'
+                 );
+
+# Some databases seem to have many years associated, so we will try
+# to get the earliest if this is set.
+$getearliestyear = 1;
+
+# Perl Lists of XPATHS to particular fields.   These are evaluated in
+# order in which they appear, so we can pick and choose amongst the
+# various layouts in TEI headers.  Priviledge the one you want
+# first by putting at the top of the list.  Those denoted as ARTFL are
+# for our local TEI recommendations.
+
+@xpsubtitle = (
+     "bookinfo/subtitle/"
+      );
+
+@xptitles =  (
+     "bookinfo/title/*",
+     "teiheader/filedesc/sourcedesc/bibl/title/",                     # ARTFL
+     "teiheader/filedesc/sourcedesc/biblstruct/monogr/title/",
+     "teiheader/filedesc/sourcedesc/bibl/titlestmt/title/",
+     "teiheader/filedesc/sourcedesc/biblfull/titlestmt/title/",
+     "teiheader/filedesc/titlestmt/title/",
+     "mepheader/doctitle/titlepart/supplied/",
+     "mepheader/doctitle/titlepart/",
+     "cesheader/filedesc/sourcedesc/biblstruct/monogr/h.title/"
+     );
+@xpauthorlastname = (
+      "bookinfo/author/surname/",
+      "teiheader/filedesc/sourcedesc/bibl/author/",                    # ARTFL
+      "teiheader/filedesc/sourcedesc/biblstruct/monogr/author/name/",
+      "teiheader/filedesc/titlestmt/author/name/",
+      "teiheader/filedesc/sourcedesc/biblfull/titlestmt/respstmt/name/",
+      "teiheader/filedesc/sourcedesc/biblfull/titlestmt/author/",
+      "teiheader/filedesc/sourcedesc/bibl/titlestmt/author/",
+      "teiheader/filedesc/titlestmt/author/",
+      "mepheader/docauthor/"
+      );
+@xpauthorfirstname = (
+	"bookinfo/author/firstname/");
+
+@xpauthorothername = (
+	"bookinfo/author/othername/");
+
+@xpauthordates = (
+      "teiheader/filedesc/sourcedesc/bibl/author/date/",               # ARTFL
+      "teiheader/filedesc/titlestmt/author/date/",
+       );
+@xppublishers = (
+     "teiheader/filedesc/sourcedesc/bibl/imprinttypeartfl/",
+     "teiheader/filedesc/sourcedesc/bibl/imprint/publisher/",          # ARTFL
+     "teiheader/filedesc/sourcedesc/biblstruct/monogr/imprint/publisher/name/",
+     "teiheader/filedesc/sourcedesc/biblfull/publicationstmt/publisher/",
+     "teiheader/filedesc/sourcedesc/bibl/publicationstmt/publisher/",
+     "teiheader/filedesc/sourcedesc/bibl/publisher/",
+     "teiheader/filedesc/publicationstmt/publisher/",
+     "mepheader/sourcedesc/bibl/*",
+     "cesheader/filedesc/publicationstmt/distributor/"
+      );
+@xppubplaces = (
+      "teiheader/filedesc/sourcedesc/bibl/imprint/pubplace/",          # ARTFL
+      "teiheader/filedesc/sourcedesc/biblstruct/monogr/imprint/pubplace/",
+      "teiheader/filedesc/sourcedesc/biblfull/publicationstmt/pubplace/",
+      "teiheader/filedesc/sourcedesc/bibl/pubplace/",
+      "teiheader/filedesc/sourcedesc/bibl/publicationstmt/pubplace/",
+      "cesheader/filedesc/publicationstmt/pubaddress/"
+       );
+@xppubdates = (
+      "teiheader/filedesc/sourcedesc/bibl/imprint/date/",              # ARTFL
+      "teiheader/filedesc/sourcedesc/biblstruct/monogr/imprint/date/",
+      "teiheader/filedesc/sourcedesc/biblfull/publicationstmt/date/",
+      "teiheader/filedesc/sourcedesc/bibl/publicationstmt/date/",
+      "teiheader/filedesc/sourcedesc/biblfull/imprint/date/",
+      "teiheader/filedesc/sourcedesc/bibl/date/",
+      "teiheader/filedesc/publicationstmt/date/",
+      "mepheader/docdate/supplied/",
+      "mepheader/docdate/",
+      "cesheader/filedesc/publicationstmt/pubdate/"
+      );
+@xpcreatedates = (
+      "teiheader/profiledesc/creation/date/"                           # ARTFL
+      );
+@xpextents = (
+      "teiheader/filedesc/sourcedesc/bibl/extent/",                    # ARTFL
+      "teiheader/filedesc/sourcedesc/biblstruct/monogr/extent/",
+      "teiheader/filedesc/sourcedesc/biblfull/extent/",
+      "cesheader/filedesc/extent/wordcount/"
+       );
+@xpeditors = (
+        "teiheader/filedesc/sourcedesc/bibl/editor/",                  # ARTFL
+	"teiheader/filedesc/sourcedesc/biblfull/titlestmt/editor/",
+	"teiheader/filedesc/sourcedesc/bibl/titlestmt/editor/"
+	);
+@xpidentifiers = (
+        "teiheader/filedesc/publicationstmt/idno/",                    # ARTFL
+	"teiheader/filedesc/publicationstmt/idnotypewwp/",
+	"teiheader/filedesc/titlestmt/amid/",
+	"teiheader/profiledesc/textclass/classcode/",
+        "mepheader/idno/"
+	);
+
+@xpgenre = (
+	"teiheader/profiledesc/textclass/keywordsschemegenre/term/"    # ARTFL
+	);
+
+@xpkeywords = (
+        "bookinfo/keywordset/keyword/",
+        "bookinfo/keywords/keyword/",
+        "teiheader/profiledesc/textclass/keywords/list/item/",         # ARTFL
+	"teiheader/profiledesc/textclass/keywordsschemelcsh/list/item/",
+	"teiheader/profiledesc/textclass/keywordsschemelcsh/term/",
+        "cesheader/profiledesc/textclass/h.keywords/keyterm/"
+	);
+
+@xplanguage = (
+	"teiheader/profiledesc/langusage/language/*"                   # ARTFL
+	);
+
+@xpnotes = (
+	"teiheader/filedesc/notesstmt/note/"                           # ARTFL
+	);
+
+@xpauthorgender = (
+   "teiheader/profiledesc/textclass/keywordsschemeauthorgender/term/",
+   "teiheader/profiledesc/textclass/keywordsschemeauthorgender/list/item/",
+   "teiheader/filedesc/some/path/to/authorgender/"
+	);
+
+@xpcollection = (
+	"teiheader/filedesc/seriesstmt/title/",                        # ARTFL
+	"teiheader/filedesc/some/path/to/collection-or-series/"
+	);
+
+@xpperiod = (
+    "teiheader/profiledesc/textclass/keywordsschemeperiod/list/item/",  # ARTFL
+    "teiheader/filedesc/some/path/to/period/"
+	);
+
+# Read in a file from argv having the DOCID and then the
+# filename.  This is generated.  You can run a debugging routine
+# to output words, tags and the raw index
+
+$TEXTDIR = $ARGV[0];
+$filelist = $ARGV[1];
+
+if ($ARGV[2] eq "-debug") {
+        $debug = 1;
+	}
+
+# Read in the list of files
+
+chomp($filelist);
+open FILEINTXT, "$filelist";
+while ($filename = <FILEINTXT>) {
+   $filename =~ s/\n//g;
+
+# Put the whole XML document header as a string.
+   $thewholething = "";
+   $intheheader = 0;
+   $pathandfile = $TEXTDIR . "/" . $filename;
+   open (THEXMLFILE, $pathandfile);                # Check to see if opened?
+   while ($inline = <THEXMLFILE>) {
+        if ($inline =~ /CONVERT-TARGET:/) {
+                $inline = "\n";
+                }
+	if ($inline =~ /$STARTTAG/i) {
+		$intheheader = 1;
+		}
+	if ($intheheader) {
+		$thewholething .= $inline;
+		}
+        last if ($inline =~ /$ENDTAG/i);        
+        }
+   close (THEXMLFILE);
+   $filesize = -s("$pathandfile");
+
+$inline =~ s/\n//;
+
+# If debug, let the user know this is the offender
+if ($debug) {
+	print STDERR "Extracting metadata from $filename = $filesize\n";
+}
+
+#  Replace  DOS <CR> characters with spaces since they can 
+#  give us all kinds of difficulties.
+   $thewholething =~ s/\015/ /g;
+
+# Then let's split the tags out with newlines and put it all 
+# in a list.  The poor man's parser....
+
+   $thewholething =~ s/\n/ /g;
+   $thewholething =~ s/</\n</g;
+   $thewholething =~ s/>/>\n/g;
+   $thewholething =~ s/\t/ /g;
+   
+   @INSTREAM = split(/\n/, $thewholething);  
+
+   $thewholething = ""; 
+
+   $bytesreadin = 0;
+   $inlinecount = 0;
+   $inheader = 0;
+   $listofpaths = "";
+
+# Read in the buffer line by line and put the data in pseudo-xpaths.
+# You are also keeping a list of xpaths in order of which they are
+# found to contain CDATA.  PATHWORDS is a hash table.
+
+   foreach $inline (@INSTREAM) {
+        $inlinecount += 1;
+	if ($inline =~ /$STARTTAG/i) {
+		$inheader = 1;
+		}
+	if ($inheader) {
+            if ($inline =~ /</) {      
+		&taghandler($inline) 
+	        }
+           else {
+		 $inline = &wordhandler($inline);
+                                                     # Add the xpath to the 
+                                                     # list if you have 
+                                                     # some data there.
+                                                     # Unicode only?
+		 if ($inline =~ /[A-Za-z0-9]/) {
+		 	&addcurrentlofpaths;
+			}
+		 $PATHWORDS{$currentpath} .= $inline . $intfs;
+		 if ($debug) {
+		 	print ">>> $currentpath ==> $inline \n";
+		}
+	   }
+        }
+    } 
+
+# We have read the header.  Now, let's extract the fields we want,
+# build a sortkey, and push this on to a list.  We like things
+# sorted by date.
+
+    &recordbuilder();
+    $recordwithkey = $thesortkey . "\t" . $theoutrecord;
+    push (@thebibliolist, $recordwithkey);
+    foreach $key (keys(%PATHWORDS)) {
+	delete $PATHWORDS{$key};
+	}
+    undef(@xpath);
+    undef(@listofpaths);
+}
+
+# ================= END OF THE FILES =============================
+# Now, we sort them, add the documentcounter to the record and strip
+# the sort key.
+
+$documentcounter = 0;
+@sortlist = sort @thebibliolist;
+
+foreach $bibline (@sortlist) {
+        $bibline =~ s/^[^\t]*\t//;                 # Strip the sort key
+        $bibline =~ s/\n//;                        # Delete the newline
+        $bibline .= "\t" . $documentcounter . "\n";
+        $documentcounter += 1;
+        print $bibline;
+        }
+exit 0;
+
+# ========================== Subroutines ==============================
+#
+# Subroutine: This adds xpaths to the unique list of xpaths in the
+# order in which CDATA is encountered.  Need this to allow for *
+# definitions of xpaths to be merged into one field.
+sub addcurrentlofpaths {
+      $loflistofpaths = @listofpaths;
+      $areyounewpath = 1;
+      if ($loflistofpaths > 0) {
+           foreach $newcheck (@listofpaths) {
+                if ($currentpath eq $newcheck) {
+                    $areyounewpath = 0;
+                   }
+           }
+      }
+      if ($areyounewpath) {
+          push (@listofpaths, $currentpath);
+      }
+}
+
+# Subroutine: Processes tagged data.  Builds a current xpath by pushing
+# and popping tags.  Pretty simple as it does not COUNT them or handle
+# attributes.  Use a real XML parser if you need this.
+sub taghandler () {
+    $inline =~ tr/A-Z/a-z/;
+     if ($debug) {
+        print "$inline\n";
+        }
+     if ($inline =~ /\/>/) {                   # Ignore empty tags
+        $emptytag = 1;
+        }
+     elsif ($inline =~ /<\!/) {                # Ignore declarations
+        $declarationtag = 1;
+        }
+     elsif ($inline =~ /<tei\.2/) {            # Ignore this one too.
+        $tei2tag = 1;
+        }
+     elsif ($inline =~ /<\//) {                # An end tag.  
+        if ($inline =~ /$ENDTAG/i) {
+           $inheader = 0;
+           }
+        $endtag = $inline;
+        $endtag =~ s:</([^>]*)>::;             # We just want the tag
+        $theendtag = $1;
+	$ignorethisone = 0;                    # Check to see if this
+	for $x (@tagstoignore) {               # is on the ignore list
+		if ($theendtag eq $x) {
+			$ignorethisone = 1;
+			}
+		}
+	if (!$ignorethisone) {                 # If it is NOT on the ignore
+        	pop (@xpath);                  # list, pop 1 and generate
+        	$currentpath = "";             # current path.
+        		foreach $w (@xpath) {
+             		$currentpath .= $w;
+             		}
+		}
+        }
+     else {
+        $starttag = $inline;                   # This is a start tag
+	if ($flattenattribs) {
+		foreach $x (@tagstoflatten) {
+			if ($x eq $starttag) {
+			    $starttag =~ s/ //g;
+			    $starttag =~ s/=//g;
+			    $starttag =~ s/"//g;
+			    }
+		}
+	}
+        $starttag =~ s:<([^ ]*)[ >]::;         # Get just the tag
+        $thestarttag = $1;
+        $ignorethisone = 0;                    # Should I ignore it?
+        for $x (@tagstoignore) {              
+                if ($thestarttag eq $x) {
+                        $ignorethisone = 1;
+                        }
+                }
+        if (!$ignorethisone) {                 # I should process this one 
+        	$thestarttag .= "/";           
+        	push (@xpath, $thestarttag);   # Push it on the list
+        	$currentpath = "";              
+        	foreach $w (@xpath) {          # generate the current path
+            		$currentpath .= $w;
+            		}
+
+	  }
+     }
+}
+
+# Subroutine: This looks up CDATA found in tags as specified by the
+# XPATH lists above.  There are processed in order.  Stops at the
+# first matching xpath in the list that contains data.  If you want
+# more than one xpath to match, this is indicated by XPATH/*
+sub getxpathdata() {
+	local ($xpathdata, $xp, @xpaths, $x);
+	@xpaths = split(' ', $_[0]);               # Ugly ... past the list
+	foreach $x (@xpaths){                      # Read the paths
+		if ($x =~ /\*/) {                         # If you have a *
+			$xpathdata = &getmultipaths($x);  # then look at the
+			}                                 # multiple search
+		else {
+			$xpathdata = $PATHWORDS{$x};
+		}
+		last if $xpathdata;                # if you have something
+	}                                          # stop and do a little
+	if ($xpathdata) {                          # housecleaning
+		$xpathdata =~ s/\t/ /g;
+		$xpathdata =~ s/^  *//;
+		$xpathdata =~ s/  *$//;
+		$xpathdata =~ s/  */ /g;
+		$xpathdata =~ s/<[^>]*>$//;		
+		$xpathdata =~ s/  *([\.\,\;\:\?\!])/$1/g;
+		}
+return $xpathdata;
+}
+
+# Subroutine: if the XPATH in the list is noted with a *, match the
+# path with all paths encountered and get the CDATA from all of the
+# offenders.
+sub getmultipaths {
+	local ($x, $y, $xpathdata);
+	$x = $_[0];
+	for $y (@listofpaths) {
+		if ($y =~ /^$x/) {
+		    $xpathdata .= $PATHWORDS{$y} . " ";
+		}
+	}
+return $xpathdata;
+}	
+
+
+# Subroutine: this builds the tab delimited record.  Note that we
+# have some a desired strucuture.  For each field, grab the first
+# XPATH with CDATA from the list.  Build a sortkey and return it all.
+sub recordbuilder() {
+	
+# Field One: Title of the document
+	$sourcetitle = &getxpathdata("@xptitles");
+	$subtitle = "";
+	$subtitle =  &getxpathdata("@xpsubtitle");
+	if ($subtitle) {
+		 $sourcetitle .= ". " . $subtitle;
+		}
+	if (!$sourcetitle) {
+		$sourcetitle = "NA";
+		}
+	$theoutrecord = $sourcetitle . "\t";
+
+# Field Two: Author of the document
+	$sourceauthor =  &getxpathdata("@xpauthorlastname");
+	$sourceauthor .= ", " . &getxpathdata("@xpauthorfirstname");
+	$sourceauthor .= " " . &getxpathdata("@xpauthorothername");
+        if (!$sourceauthor) {
+                $sourceauthor = "NA";
+                }
+	$theoutrecord .= $sourceauthor . "\t";
+
+# Field Three: The YEAR and get other dates to output later
+# We want a 4 integer year for searching and sorting.  Try first
+# to get a creation date and a publication date.  Set the YEAR
+# to creation date and then to publication date and look for
+# 4 ints.
+	$creationdate =  &getxpathdata("@xpcreatedates");
+	$publicationdate = &getxpathdata("@xppubdates");
+	if ($creationdate) {
+		$sourcedate = $creationdate;
+		}
+	else {
+		$sourcedate = $publicationdate;	
+		}
+	if ($sourcedate =~ /[A-Za-z\-\[\]\.\?\*\;\/ \<\>\,]/) {
+		if ($getearliestyear) {
+			$sourcedate = &getfirstyear($sourcedate);
+			}
+		else {                                  # Get the first 4 dig
+			$xxxxdate = $sourcedate;
+			$xxxxdate =~ s/([0-9][0-9][0-9][0-9])//;
+			$sourcedate = $1;
+			}
+		}
+        if (!$sourcedate) {
+                $sourcedate = "NA";
+                }
+	$theoutrecord .= $sourcedate . "\t";
+
+# Field Four: Genre 
+	$sourcegenre = &getxpathdata("@xpgenre");
+	$theoutrecord .= $sourcegenre . "\t";
+
+# Field Five: Publisher	
+	$sourcepublisher = &getxpathdata("@xppublishers");
+	$theoutrecord .= $sourcepublisher . "\t";
+
+# Field Six: Publication Place
+	$sourcepubplace = &getxpathdata("@xppubplaces");
+	$theoutrecord .= $sourcepubplace . "\t";
+
+# Field Seven: Extent, typically pagination and the like.
+	$extent =  &getxpathdata("@xpextents");
+	$theoutrecord .= $extent . "\t";
+
+# Field Eight: Editors
+	$editors =  &getxpathdata("@xpeditors");
+        $theoutrecord .= $editors . "\t";
+
+# Field Nine: Publication Date from above without modification 
+	$theoutrecord .= $publicationdate . "\t";
+
+# Field Ten: Creation Date from above without modification
+	$theoutrecord .= $creationdate . "\t";
+
+# Field Eleven: Author Dates.  We see alot of that.
+	$authordates = &getxpathdata("@xpauthordates");
+	$theoutrecord .= $authordates . "\t";
+
+# Field Twelve: Keywords
+	$keywords = &getxpathdata("@xpkeywords");
+	$theoutrecord .= $keywords . "\t";
+
+# Field Thirteen: Language
+        $doclanguage =  &getxpathdata("@xplanguage");
+	$theoutrecord .= $doclanguage . "\t";
+
+# Field Fourteen: Collection/Series
+       $doccollection = &getxpathdata("@xpcollection");
+       $theoutrecord .= $doccollection . "\t";
+
+# Field Fifteen: Author Gender
+	$gender = &getxpathdata("@xpauthorgender");
+	$theoutrecord .= $gender  . "\t";
+
+# Field Sixteen: SourceNote
+        $docnote = &getxpathdata(@xpnotes);
+	$docnote =~ s/<fs\/>/ /g;
+	$docnote =~ s/ +/ /g;
+	$theoutrecord .= $docnote . "\t";
+
+# Field Seventeen: Period
+	$docperiod = &getxpathdata(@xpperiod);
+	$theoutrecord .= $docperiod . "\t";
+
+# Field N-3: Identifier.  We want a "Short Cite" without spaces
+# to allow a KWIC with a reference.  Use identifiers if they are
+# found and the filename if not.
+
+	$filedescidno =  &getxpathdata("@xpidentifiers");
+        if (!$filedescidno) {
+		$filedescidno = $filename;
+		$filedescidno =~ s/\..*$//;
+		$filedescidno =~ s/.*\///g;
+		}
+	$filedescidno =~ s/  *$//;
+	$filedescidno =~ s/^  *//;
+	$filedescidno =~ s/ /:/g;
+	$theoutrecord .= $filedescidno . "\t";
+
+# Field N-2: the filename
+	$theoutrecord .= $filename . "\t";
+# Field N-1: the filesize (a holdover not needed anymore.  
+	$theoutrecord .= $filesize ;
+# Field N, the last one is added after sorting.
+
+# Let's clean up anything that we might need.
+	$theoutrecord =~ s/\t +/\t/g;
+	$theoutrecord =~ s/\n/ /g;
+	$theoutrecord =~ s/<fs\/><fs\/>/<fs\/>/g;
+	$theoutrecord =~ s/<fs\/> *\t/\t/g;
+	$theoutrecord =~ s/\t<fs\/>/\t/g;
+	$theoutrecord =~ s/ +<fs\/>/<fs\/>/g;
+	$theoutrecord =~ s/<fs\/> +/<fs\/>/g;
+	$theoutrecord =~ s/<fs\/><fs\/>/<fs\/>/g;
+
+# Now, let's make up a sortkey.  I like year, author, title.  Lord
+# knows this can be modified.  This sets the output display for
+# concordance and KWIC results, so chronology is best.  I'm an historian.
+# Go figure.  :-)
+	if ($sourcedate eq "NA") {
+		$sourcedate = "9999";
+		}
+
+	$thesortkey = $sourcedate ." ". $sourceauthor ." ". $sourcetitle;
+	$thesortkey =~ tr/A-Z/a-z/;
+	if ($debug) {
+		print "$thesortkey --> $theoutrecord \n=========\n";
+		}
+
+        $sourcetitle = "";
+        $sourceauthor = "";
+        $sourcedate = "";
+        $sourcegenre = "";
+        $sourcepublisher = "";
+        $sourcepubplace = "";
+        $filedescauthor = "";
+        $filedesctitle = "";
+        $filedescpublisher = "";
+        $filedescpubplace = "";
+        $filedescdate = "";
+        $filedescidno = "";
+
+}
+
+# Subroutine: clean up the words, since we will be using these to
+# search and display the bibliographic data.
+sub wordhandler() {
+	local ($thewords);
+	$thewords = $_[0];
+   	$thewords = &charents2utf8($thewords);
+	$thewords = &charentconvert($thewords);	
+	return $thewords;
+}
+
+# Subroutine: convert character ents.  Should come from a table.
+sub charentconvert () {
+	local ($thewords);
+	$thewords = $_[0];
+	$thewords =~ s/\&apos;/\'/gi;
+	$thewords =~ s/\&rsquo;/\'/gi;
+	$thewords =~ s/\&hyphen;/\-/gi;
+	$thewords =~ s/\&colon;/\:/gi;
+	$thewords =~ s/\&ldquo;/\"/gi;
+	$thewords =~ s/\&rdquo;/\"/gi;
+	$thewords =~ s/\&quot;/\"/gi;
+	$thewords =~ s/\&dash;/\-/gi;
+        $thewords =~ s/\&dot;/\./g;
+        $thewords =~ s/\&dollar;/\$/gi;
+        $thewords =~ s/\&lsquo;/`/g;
+        $thewords =~ s/\&quest;/\?/g;
+        $thewords =~ s/\&excl;/\!/g;
+        $thewords =~ s/\&blank;/ /g;
+        $thewords =~ s/\&colon;/:/g;
+        $thewords =~ s/\&ast;/\*/g;
+        $thewords =~ s/\&mdash;/-/gi;
+	return $thewords;
+}
+
+# =================================================================
+# Subroutine: charents2utf8 converts ISO-LATIN-1 character entities in
+# index words to UTF-8 for standard word index search consistency.  
+# This is for SGML data sets and XML that have character ents rather
+# than UTF-8 characters.  Should probably come from a table
+# =================================================================
+
+sub charents2utf8 () {
+     local ($theword); 
+     $theword = $_[0];
+     $theword =~ s/\&Agrave;/\xc3\x80/g; 
+     $theword =~ s/\&Aacute;/\xc3\x81/g; 
+     $theword =~ s/\&Acirc;/\xc3\x82/g;
+     $theword =~ s/\&Atilde;/\xc3\x83/g;
+     $theword =~ s/\&Auml;/\xc3\x84/g;
+     $theword =~ s/\&Aring;/\xc3\x85/g;
+     $theword =~ s/\&Ccedil;/\xc3\x87/g;
+     $theword =~ s/\&Egrave;/\xc3\x88/g;
+     $theword =~ s/\&Eacute;/\xc3\x89/g;
+     $theword =~ s/\&Ecirc;/\xc3\x8A/g;
+     $theword =~ s/\&Euml;/\xc3\x8B/g;
+     $theword =~ s/\&Igrave;/\xc3\x8C/g;
+     $theword =~ s/\&Iacute;/\xc3\x8D/g;
+     $theword =~ s/\&Icirc;/\xc3\x8E/g;
+     $theword =~ s/\&Iuml;/\xc3\x8F/g;
+     $theword =~ s/\&ETH;/\xc3\x90/g;
+     $theword =~ s/\&Ntilde;/\xc3\x91/g;
+     $theword =~ s/\&Ograve;/\xc3\x92/g;
+     $theword =~ s/\&Oacute;/\xc3\x93/g;
+     $theword =~ s/\&Ocirc;/\xc3\x94/g;
+     $theword =~ s/\&Otilde;/\xc3\x95/g;
+     $theword =~ s/\&Ouml;/\xc3\x96/g;
+     $theword =~ s/\&#215;/\xc3\x97/g; # MULTIPLICATION SIGN
+     $theword =~ s/\&Oslash;/\xc3\x98/g;
+     $theword =~ s/\&Ugrave;/\xc3\x99/g;
+     $theword =~ s/\&Uacute;/\xc3\x9A/g;
+     $theword =~ s/\&Ucirc;/\xc3\x9B/g;
+     $theword =~ s/\&Uuml;/\xc3\x9C/g;
+     $theword =~ s/\&Yacute;/\xc3\x9D/g;
+     $theword =~ s/\&THORN;/\xc3\x9E/g;
+     $theword =~ s/\&agrave;/\xc3\xA0/g;
+     $theword =~ s/\&aacute;/\xc3\xA1/g;
+     $theword =~ s/\&acirc;/\xc3\xA2/g;
+     $theword =~ s/\&atilde;/\xc3\xA3/g;
+     $theword =~ s/\&auml;/\xc3\xA4/g;
+     $theword =~ s/\&aring;/\xc3\xA5/g;
+     $theword =~ s/\&ccedil;/\xc3\xA7/g;
+     $theword =~ s/\&egrave;/\xc3\xA8/g;
+     $theword =~ s/\&eacute;/\xc3\xA9/g;
+     $theword =~ s/\&ecirc;/\xc3\xAA/g;
+     $theword =~ s/\&euml;/\xc3\xAB/g;
+     $theword =~ s/\&igrave;/\xc3\xAC/g;
+     $theword =~ s/\&iacute;/\xc3\xAD/g;
+     $theword =~ s/\&icirc;/\xc3\xAE/g;
+     $theword =~ s/\&iuml;/\xc3\xAF/g;
+     $theword =~ s/\&eth;/\xc3\xB0/g;
+     $theword =~ s/\&ntilde;/\xc3\xB1/g;
+     $theword =~ s/\&ograve;/\xc3\xB2/g;
+     $theword =~ s/\&oacute;/\xc3\xB3/g;
+     $theword =~ s/\&ocirc;/\xc3\xB4/g;
+     $theword =~ s/\&otilde;/\xc3\xB5/g;
+     $theword =~ s/\&ouml;/\xc3\xB6/g;
+     $theword =~ s/\&#247;/\xc3\xB7/g;   #  DIVISION SIGN
+     $theword =~ s/\&oslash;/\xc3\xB8/g;
+     $theword =~ s/\&ugrave;/\xc3\xB9/g;
+     $theword =~ s/\&uacute;/\xc3\xBA/g;
+     $theword =~ s/\&ucirc;/\xc3\xBB/g;
+     $theword =~ s/\&uuml;/\xc3\xBC/g;
+     $theword =~ s/\&yacute;/\xc3\xBD/g;
+     $theword =~ s/\&thorn;/\xc3\xBE/g;
+     $theword =~ s/\&yuml;/\xc3\xBF/g;
+return $theword;
+
+}
+
+sub getfirstyear {
+	local ($sourcedate, @sortedlist, @listofyears, $x);
+	$sourcedate = $_[0];
+	while ($sourcedate =~ /[0-9][0-9][0-9][0-9]/) {
+		$sourcedate =~ s/([0-9][0-9][0-9][0-9])//;
+		$ayear = $1;
+		push (@listofyears, $ayear);
+		$x += 1;
+		last if $x > 20;
+		}
+	@sortedlist = sort @listofyears;
+	$sourcedate = $sortedlist[0];
+return $sourcedate;
+}
+

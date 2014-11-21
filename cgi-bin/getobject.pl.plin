@@ -1,0 +1,331 @@
+#!@PERL@ -T
+# -*- perl -*-
+# @configure_input@
+#
+# $Id: getobject.pl.plin,v 2.10 2004/05/28 18:43:02 o Exp $
+#
+# philologic 2.8 -- TEI XML/SGML Full-text database engine
+# Copyright (C) 2004 University of Chicago
+# 
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the Affero General Public License as published by
+# Affero, Inc.; either version 1 of the License, or (at your option)
+# any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# Affero General Public License for more details.
+# 
+# You should have received a copy of the Affero General Public License
+# along with this program; if not, write to Affero, Inc.,
+# 510 Third Street, Suite 225, San Francisco, CA 94107 USA.
+
+$PHILOSITECFG = "@sysconfdir@/philologic";
+
+($ht, $id, $dbname, @w_offsets) = split ('\.', $ENV{'QUERY_STRING'});
+
+do "$PHILOSITECFG/philologic.cfg";
+
+do "$PHILOSITECFG/dbnames";
+$SYSTEM_DIR=$dbnames{"$dbname"};
+
+unshift (@INC, $SYSTEM_DIR . "lib");
+require "philosubs.pl";
+
+if ( $ChainLinksRestricted )
+{
+    ($htd, $hlist, $dbname, $number, $conj, $wn, $seq) = 
+
+	split ('\.', $ENV{'QUERY_STRING'});
+
+    if ( ($seq < 0 ? -$seq : $seq) > $ChainLinksLimit ) 
+    {
+	print "<p><h2>" . $philomessage[218] . "</h2>\n";
+	exit (0);
+    }
+
+}
+
+
+
+# TOMS CONFIG:
+
+unless ( defined ( @OBJECTLABELS ) ) {
+    @OBJECTLABELS = ('page', 'section', 'section', 'section', 'paragraph'); 
+}
+# the hierarchy itself: 
+
+# This is hard coded, since we have only two types of objects
+%HIERARCHY =
+	('p', '0:1',    # "p" is for "page"
+	 'c', '1:4');   # "c" is for chapter
+
+
+
+$word = 3; 
+
+$PAGESERVER = "$PHILOCGI/getobject.pl";
+
+# end config
+
+
+#$id = shift @ARGV;
+
+# experiment:
+
+$hithighon_obj = "<b>" unless $hithighon_obj;
+$hithighoff_obj = "</b>" unless $hithighoff_obj;
+
+
+if ( $ChainLinksRestricted )
+{
+
+    ($ht, $depth) = split ("", $htd); 
+
+    if ( $depth < $AllowedObjectsDepth )
+    {
+	print "<p><h2>" . $philomessage[218] . "</h2>\n";
+	exit (0);
+    }
+
+    if ( -e "$PHILODATADIR/hitlists/hitlist." . $hlist )
+    {
+	open H, "$PHILODATADIR/hitlists/hitlist." . $hlist; 
+	seek ( H, $number * ( $conj * 2 + $wn * 4 ), 0 );
+
+	read ( H, $hit, $conj * 2 + $wn * 4 );
+
+	@hindex = unpack ( "s" . $conj . "l" . $wn, $hit ); 
+
+	$doc = shift @hindex;
+
+	@I = splice ( @hindex, 0, $depth ); 
+
+	if ( $seq )
+	{
+	    undef @w_offsets;
+	}
+	else
+	{
+	    @w_offsets = splice ( @hindex, $#index - $wn + 1, $wn );
+	    @w_offsets = sort numerically @w_offsets;
+	}
+
+	for ( $i = 0; $i < $depth; $i++ )
+	{
+	    $I[$i] = 0 if $I[$i] == -1; 
+	}
+
+	$I[$#I] += $seq; 
+	$I[$#I] = 0 if $I[$#I] < 0;
+       
+    }
+    else
+    {
+	print "<p><h2>" . $philomessage[219] . "</h2>\n";
+	exit 0;
+    }
+}
+else
+{
+    $id =~ s/\-1/0/g;
+
+    @I = split (':', $id);
+    $doc = shift @I;
+}	
+
+print &objectheader;
+	
+open (D, $SYSTEM_DIR . "docinfo");
+
+@D=<D>; close D;
+
+($name, $len, $cite, $OF, $LEN) = split (" ", $D[$doc]);
+
+open (O, $SYSTEM_DIR . "/toms/objects");
+
+seek (O, $OF, 0); 
+read (O, $p, $LEN); close O;
+
+@p = split ("", $p); 
+
+
+#if ( !$ChainLinksRestricted )
+#{
+    ($skip, $hl) = split (":", $HIERARCHY {$ht}); 
+#}
+#else
+#{
+#    $skip = 1;
+#    $hl = $depth; 
+#}
+
+
+$io = $skip * 6; 
+$o = 0;
+$onext = $len; 
+
+$leaf = ($#I + 1 == $hl); 
+
+$ST = $leaf ? 1 : 2; 
+
+
+if ($I[$#I])
+{
+       if ( !$ChainLinksRestricted )
+       {
+           $linktag = &linkTag ( -1, @I );
+
+           $pagetag = $ht . "." . $doc . ":" . $linktag . "."  . $dbname;
+           $href = "<A HREF=\"" . $PAGESERVER . "?$pagetag\">";
+	   $previouslink = $href . sprintf($philomessage[306], $OBJECTLABELS[$skip+$#I]) . "</A><p>\n";
+       }
+       elsif ( ($seq-1 < 0 ? 1-$seq : $seq-1) <= $ChainLinksLimit )
+       {
+           $pagetag = $htd . "." . $hlist . "."  . $dbname . "." . 
+               $number . "." . $conj . "." . $wn . "." . ($seq - 1); 
+
+           $href = "<A HREF=\"" . $PAGESERVER . "?$pagetag\">";
+	   $previouslink = $href . sprintf($philomessage[306], $OBJECTLABELS[$skip+$#I]) . "</A><p>\n";
+       }
+           
+} else {
+    $previouslink = "";
+}
+
+
+
+# I am going to buffer the output so we can print next and previous links
+# at the top and bottom of the page -- RSH, 1/31/06
+
+for ($i = 0; $i <= $#I; $i++)
+{
+    $w = &readn ($io);
+
+    $io += 6; 
+
+
+    if ( $i < $#I )
+    {
+        $onext = &readn ($w + ($I[$i] + $o + 1) * $word * 2);
+        $o = &readn ($w + ($I[$i] + $o) * $word * 2 + $word);
+    }
+    else
+    {
+        $offset = &readn ($w + ($I[$i] + $o) * $word * $ST);
+        $noffset = &readn ($w + ($I[$i] + $o + 1) * $word * $ST);
+      
+        $length = $onext < $noffset ? $onext - $offset : $noffset - $offset; 
+
+        $forward = $onext > $noffset;
+
+        open (T, $SYSTEM_DIR . "TEXTS/" . $name);
+
+        seek (T, $offset, 0);
+        read (T, $object, $length); close T;
+
+        if ( $#w_offsets > -1 )
+        {
+            $k = 0;
+
+            $leftcontext  = substr($object, 0, $w_offsets[0] - $offset); 
+
+            while ( $w_offsets[$k] < $offset + $length && $k < $#w_offsets )
+            {
+                $span = substr ($object, $w_offsets[$k] - $offset, $w_offsets[$k+1] < $offset + $length ? $w_offsets[$k+1] - $w_offsets[$k] : $offset + $length - $w_offsets[$k]);
+             
+
+                if (defined(&ObjectSpan)) {
+                    $span = &ObjectSpan($span);
+		}
+                else {
+		    $span =~ s:([ \t\n\.,!?\`<>\~/\:\|\@\$\%\^\*-]):$hithighoff_obj$1:;
+		}
+
+                push (@spans, $span);
+                $k++;
+            }
+
+            if ( $w_offsets[$k] < $offset + $length ) {
+		$span = substr ($object, $w_offsets[$k] - $offset, $offset + $length - $w_offsets[$k]);
+
+                if (defined(&ObjectSpan)) {
+                    $span = &ObjectSpan($span);
+		}
+                else {
+		    $span =~ s:([ \t\n\.,!?\`<>\~/\:\|\@\$\%\^\*-]):$hithighoff_obj$1:;
+                }
+                push (@spans, $span);
+            }
+
+            unshift (@spans, $leftcontext);
+
+            $object = join ($hithighon_obj, @spans);
+        }
+
+        $object = &ObjectFormat($object);
+        $object =~ s/<page[^>]*$//; # hack!
+        #$object =~ s/<\/span><\/span><p>/<\/span><\/span>/gsi;
+        #print $object;
+        $outputbuffer .= $object;
+    }
+
+}
+
+if ($forward) {
+    if ( !$ChainLinksRestricted ) {
+        $linktag = &linkTag ( 1, @I );
+        $pagetag = $ht . "." . $doc . ":" . $linktag . "."  . $dbname;
+        $href = "<A HREF=\"" . $PAGESERVER . "?$pagetag\">";
+	$nextlink = $href . "<p>" . sprintf($philomessage[307], $OBJECTLABELS[$skip+$#I]) . "</A><p>\n";
+    }
+    elsif ( ($seq+1 < 0 ? -$seq-1 : $seq+1) <= $ChainLinksLimit )
+    {
+           $pagetag = $htd . "." . $hlist . "."  . $dbname . "." . 
+               $number . "." . 
+	       $conj . "." . $wn . "." . ($seq + 1); 
+
+           $href = "<A HREF=\"" . $PAGESERVER . "?$pagetag\">";
+	   $nextlink = $href . sprintf($philomessage[307], $OBJECTLABELS[$skip+$#I]) . "</A><p>\n";
+       }
+} else {
+    $nextlink = "";
+}
+
+$navlinks = "<table width='95%'><tr><td width='50%' align='left'>$previouslink</td><td width='50%' align='right'>$nextlink</td></tr></table>";
+
+print $navlinks;
+
+print $outputbuffer;
+
+print $navlinks;
+
+print &objectfooter;
+
+exit 0; 
+
+sub linkTag {
+    local ($inc, @i) = @_;
+
+    $i[$#i] += $inc; 
+
+    return join (":", @i);
+}
+
+sub readn 
+{
+    local ($i) = @_[0];
+    local ($j,$r);
+
+    $r = 0; 
+
+    for ($j = 0; $j < $word; $j++)
+    {
+	$r += (ord($p[$i+$j]) << $j*8);
+    }
+    
+    return $r;
+}
+
+sub numerically { $a <=> $b }

@@ -1,0 +1,222 @@
+#!@PERL@ -T
+# -*- perl -*-
+# @configure_input@
+#
+# $Id: contextualize.pl.plin,v 2.11 2004/11/16 00:44:05 o Exp $
+#
+# philologic 2.8 -- TEI XML/SGML Full-text database engine
+# Copyright (C) 2004 University of Chicago
+# 
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the Affero General Public License as published by
+# Affero, Inc.; either version 1 of the License, or (at your option)
+# any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# Affero General Public License for more details.
+# 
+# You should have received a copy of the Affero General Public License
+# along with this program; if not, write to Affero, Inc.,
+# 510 Third Street, Suite 225, San Francisco, CA 94107 USA.
+
+# Slightly modified by MVO to handle ChainsRestricted option for
+# ARTFL and OVI databases.  Oct 28, 2004.
+
+$PHILOSITECFG = "@sysconfdir@/philologic";
+do "$PHILOSITECFG/dbnames";
+do "$PHILOSITECFG/philologic.cfg";
+$PAGESERVER = "$PHILOCGI/getobject.pl";
+
+# In theory, the line below should be supplied from philosubs.pl
+# However, since _all_ databases will _most definitely_ have 
+# page objects, I think it is safe to leave it here (for now 
+# at least)
+
+%objects = ( 'p',	'page');
+$word = 3; 
+@buffer = split ('\.', $ENV{'QUERY_STRING'});
+($o_t, $doc, $dbname, @w_offsets) = @buffer;
+$SYSTEM_DIR=$dbnames{"$dbname"};
+
+unshift (@INC, $SYSTEM_DIR . "lib");
+require ("philosubs.pl");
+
+# This is a very igly switch.  We really should not have to parse 
+# these seperately like this, but for now it works.
+if ( $ChainLinksRestricted ) {
+    ($o_t, $hlist, $dbname, $number, $conj, $wn, $seq) = 
+	split ('\.', $ENV{'QUERY_STRING'});
+        if ( ($seq < 0 ? -$seq : $seq) > $ChainLinksLimit ) {
+	print &mkTitle;
+	print "<p><h2>" . $philomessage[218] . " (cl)</h2>\n";
+	exit (0);
+    }
+}
+
+$object = $objects {$o_t};
+
+$ptmvo = " "; 
+$ptmvo1 = $object;
+
+$hithighon_obj = "<b>" unless $hithighon_obj;
+$hithighoff_obj = "</b>" unless $hithighoff_obj;
+
+if ( $ChainLinksRestricted ) {
+    if ( -e "$PHILODATADIR/hitlists/hitlist." . $hlist ) {
+	open H, "$PHILODATADIR/hitlists/hitlist." . $hlist; 
+	seek ( H, $number * ( $conj * 2 + $wn * 4 ), 0 );
+	read ( H, $hit, $conj * 2 + $wn * 4 );
+	@hindex = unpack ( "s" . $conj . "l" . $wn, $hit ); 
+	$doc = shift @hindex;
+	@I = splice ( @hindex, 0, $depth ); 
+        @w_offsets = splice ( @hindex, $#index - $wn + 1, $wn );
+	for ( $i = 0; $i < $depth; $i++ ) {
+	    $I[$i] = 0 if $I[$i] == -1; 
+	}
+    }
+    else {
+    	print &mkTitle;
+	print "<p><h2>" . $philomessage[219] . "</h2>\n";
+	exit 0;
+    }
+}
+
+# Print the normal head here because we have two very different
+# interfaces above, so this is the first time we see a document
+# number. 
+
+print &contextheader;
+$pagenumber = 0;
+open (D, $SYSTEM_DIR . "docinfo");
+@D=<D>; close D;
+($name, $len, $cite, $OF, $LEN) = split (" ", $D[$doc]);
+open (O, $SYSTEM_DIR . "/toms/objects");
+seek (O, $OF, 0);
+$ReAd = read (O, $p, $LEN); close O; 
+
+@p = split ("", $p); 
+$o = &readn (0);
+$hm = &readn (3);
+
+$offset = $length = 0; 
+
+while ( $w_offsets[0] > $offset + $length && $pagenumber < $hm - 1 ) {
+    $offset = &readn ($o + $pagenumber*3); 
+    $length = &readn ($o + $pagenumber*3 + 3) - $offset;
+    $pagenumber++;
+    $forward = $pagenumber < $hm - 1;
+}
+
+
+if ( $ChainLinksRestricted ) {
+    $pagenumber = $pagenumber - 1 + $seq; 
+
+    if ( $pagenumber < 0 || $pagenumber >= $hm -1 ) {
+	print "<p>" . $philomessage[220] . " ($pagenumber)</p>\n";
+	exit 0;
+    }
+
+    if ( $seq ) {
+	$offset = &readn ($o + $pagenumber*3);
+	$length = &readn ($o + $pagenumber*3 + 3) - $offset;
+	undef @w_offsets; 
+    }
+    else {
+	@w_offsets = sort numerically @w_offsets;
+    }
+
+    $forward = $pagenumber < $hm - 2; 
+}
+
+
+open (T, $SYSTEM_DIR . "TEXTS/" . $name);
+seek (T, $offset, 0);
+read (T, $pagetext, $length); close T;
+
+# MVO added Oct 6 to fix biblio bug.  sub contextheader in philosubs.pl
+# sets $doc = $docnumber   so we keep this here to be compatible
+$docnumber = $doc;
+# End MVO add: obviously, we should fix all philosubs.pl at one point
+
+if ($pagenumber) {
+    if ( !$ChainLinksRestricted ) {
+	$pagetag = $o_t . "." . $doc . ":" . ($pagenumber - 2) . "." . $dbname;
+	$href = "<A HREF=\"" . $PAGESERVER . "?$pagetag\">";
+	$previouslink =  $href . sprintf($philomessage[306], $ptmvo1) . "</A><P>\n";
+    }
+    elsif ( ($seq-1 < 0 ? 1-$seq : $seq-1) <= $ChainLinksLimit ) {
+           $pagetag = $o_t . "." . $hlist . "." . $dbname . "." . 
+	       $number . "." . $conj . "." . $wn . "." . ($seq - 1); 
+           $href = "<A HREF=\"" . "$PHILOCGI/contextualize.pl" . "?$pagetag\">";
+	   $previouslink = $href . sprintf($philomessage[306], $ptmvo1) . "</A><p>\n";
+       }
+
+} else {
+    $previouslink = "";
+}
+
+if ( $forward ) {
+    if ( !$ChainLinksRestricted ) {
+        $pagetag = $o_t . "." . $doc . ":" . ($pagenumber) . "."  . $dbname;
+        $href = "<A HREF=\"" . $PAGESERVER . "?$pagetag\">";
+	$nextlink =   $href . "<p>" . sprintf($philomessage[307], $ptmvo1) . "</A><p>\n";
+    }
+    elsif ( ($seq+1 < 0 ? -$seq-1 : $seq+1) <= $ChainLinksLimit ) {
+           $pagetag = $o_t . "." . $hlist . "."  . $dbname . "." . 
+	       $number . "." . $conj . "." . $wn . "." . ($seq + 1); 
+           $href = "<A HREF=\"" . "$PHILOCGI/contextualize.pl" . "?$pagetag\">";
+	   $nextlink =  $href . sprintf($philomessage[307], $ptmvo1)  . "</A><p>\n";
+       }
+} else {
+    $nextlink = "";
+}
+
+$navlinks = "<table width='95%'><tr><td width='50%' valign='top' align='left'>$previouslink</td><td width='50%' valign='top' align='right'>$nextlink</td></tr></table>";
+
+print $navlinks;
+
+$i = 0;
+
+if ( defined (@w_offsets) ) {
+    $leftcontext  = substr($pagetext, 0, $w_offsets[0] - $offset); 
+    while ( $w_offsets[$i] < $offset + $length && $i < $#w_offsets ) {
+	$span = substr ($pagetext, $w_offsets[$i] - $offset, $w_offsets[$i+1] < $offset + $length ? $w_offsets[$i+1] - $w_offsets[$i] : $offset + $length - $w_offsets[$i]);
+       $span = &ObjectSpan($span);
+	push (@spans, $span);
+	$i++;
+    }
+
+    if ( $w_offsets[$i] < $offset + $length ) {
+	$span = substr ($pagetext, $w_offsets[$i] - $offset, $offset + $length - $w_offsets[$i]);
+        $span = &ObjectSpan($span);
+	push (@spans, $span);
+    }
+    unshift (@spans, $leftcontext);
+    $pagetext = join ($hithighon_obj, @spans);
+}
+$pagetext = &ObjectFormat ($pagetext); 
+
+print $pagetext . "<br><br>\n";
+
+print $navlinks;
+
+print &contextfooter;
+
+exit 0;
+
+sub readn {
+    local ($i) = @_[0];
+    local ($j,$r);
+    $r = 0; 
+    for ($j = 0; $j < $word; $j++) {
+        $r += (ord($p[$i+$j]) << $j*8);
+    }
+    return $r;
+}
+
+sub numerically { $a <=> $b }
+
+
+

@@ -1,0 +1,185 @@
+# Makefile.  Generated from Makefile.in by configure.
+# $Id: Makefile.in,v 2.13 2004/11/16 00:44:05 o Exp $
+include load.cfg
+
+######################################################################
+# De programs, man                                                   #
+######################################################################
+
+GAWK=	/bin/gawk
+
+CC=	gcc
+PH_CFLAGS=	-O -g -pipe -w -I..
+CFLAGS= -g -O2
+
+SH=	/bin/sh
+
+SUBMAKE=/usr/bin/make
+
+PERL=	/usr/bin/perl
+
+# we need echo which understands -n and, preferably, -e; 
+# on Solaris this would be /usr/ucb/echo
+ECHO= 	echo 
+
+EGREP=	/bin/grep -E
+
+SORT= sort
+
+LINKS= index index.1 MFL MFLSTATS STATS
+
+#SCRIPTS= split newdocs
+
+######################################################################
+#### Default build rules #############################################
+######################################################################
+
+PROGRAMS= SH=$(SH) SUBMAKE=$(SUBMAKE) PERL=$(PERL) EGREP="$(EGREP)"
+
+%:	%.make
+	echo \#\!$(SUBMAKE) -f | cat - $*.make >$@
+	chmod +x $@
+
+%:	%.gawk
+	echo \#\!$(GAWK) -f | cat - $*.gawk >$@
+	chmod +x $@
+
+%:	%.sh
+	echo \#\!$(SH) | cat - $*.sh >$@
+	chmod +x $@
+
+%:	%.perl
+	echo \#\!$(PERL) | cat - $*.perl >$@
+	chmod +x $@
+
+INSTALL_FILES = AUTHORS COPYING ChangeLog INSTALLING LOADING Makefile Makefile.in NEWS README aclocal.m4 configure configure.ac depcomp install-sh loader.xmake.in missing mkinstalldirs 
+
+######################################################################
+#### Targets #########################################################
+######################################################################
+
+all:
+	@echo "Running make probably doesn't do what you expect."
+	@echo "Please read README or if you know what you're doing,"
+	@echo "run 'make install'."
+
+install: 
+	/usr/bin/install -c -d -g philologic -m u=rwx,g=rwx,o=rx ${prefix}/etc/philologic
+	/usr/bin/install -c -d -g philologic -m u=rwx,g=rwx,o=rx ${prefix}/var/lib/philologic
+	/usr/bin/install -c -d -g philologic -m u=rwx,g=rwx,o=rx ${prefix}/var/lib/philologic/work
+	/usr/bin/install -c -d -g philologic -m u=rwx,g=rwx,o=rx ${prefix}/var/lib/philologic/STATE
+	/usr/bin/install -c -d -g philologic -m u=rwx,g=rwx,o=rx ${prefix}/var/lib/philologic/databases
+#	/usr/bin/install -c -g philologic -m u=rwx,g=rwx,o=rx $(INSTALL_FILES) ${prefix}/var/lib/philologic
+	cp -R . ${prefix}/var/lib/philologic
+	chgrp -R philologic ${prefix}/var/lib/philologic/
+	chmod -R g+rwX,o+rX ${prefix}/var/lib/philologic/
+	touch ${prefix}/var/lib/philologic/files
+	/usr/bin/install -c -d -g philologic -m u=rwx,g=rwx,o=rx /var/www/html/philologic/
+	cd cgi-bin/ && make install
+	cd etc/ && make install
+	cd search3 && make install
+	/usr/bin/install -c -d -m a=rwx ${prefix}/var/lib/philologic/hitlists
+	/etc/init.d/nserver stop
+	/etc/init.d/nserver start
+
+destructive-uninstall:
+	rm -rf ${prefix}/var/lib/philologic
+	rm -rf ${prefix}/etc/philologic
+	rm -rf /var/www/html/philologic//philosearch.html
+	rm -rf /var/www/html/philologic//philopowered.png
+	rm -rf /var/www/cgi-bin/philologic/
+	rm -f /etc/init.d/nserver
+	rm -f ${exec_prefix}/bin/philoload
+	rm -f ${exec_prefix}/bin/search3
+
+
+load toms indices gimmedb gimme full-install:  preparations work/loader work/links.done work/memos.exists
+		(cd work; SYSTEM_DIR=`pwd`/; export SYSTEM_DIR; PATH=.:`pwd`/..:`pwd`/../utils:`pwd`/../toms:`pwd`/../pack:`pwd`/../search-engine:`pwd`/../crapser:../installdir:../gimme:$(PATH); export PATH; LANG=; LC_ALL=;\
+		 loader $@ 2>&1 | tee -a LOADER.LOG)
+
+preparations: programs work/loader work/links.done work/memos.exists
+
+programs: 
+	for dir in utils pack toms installdir; \
+	do (cd $$dir; make $(PROGRAMS)); done
+
+work/links.done: 
+	(cd work; ln -s `echo $(LINKS)|tr '\040' '\012'|sed -e 's:^:$(IMAGE)/:'` .)
+	(cd work; ln -s $(TEXTS) TEXTS)
+	(cd $(IMAGE); ln -s $(TEXTS) TEXTS || echo "(that's ok)")
+	touch $@
+
+work/memos.exists:
+	mkdir $(IMAGE)/toms 		|| echo "(that's ok)"
+	mkdir $(IMAGE)/navigation	|| echo "(that's ok)"
+	touch $@
+
+work/plain.files.split:	work/plain.files
+	./utils/split $(BATCHSIZE) work/plain.files && touch $@
+
+work/plain.files: bibliography 
+#	./utils/newdocs "TEXTS" | $(SORT) -n +0 -1 > $@
+	./utils/newdocs "TEXTS" | $(SORT) -n -k 1,1 > $@
+
+bibliography:
+	./utils/mkbibliography $(TEXTS) files >$@
+	#	$(MKBIBLIOGRAPHY) $(TEXTS) files >$@
+ 
+
+######################################################################
+# Main Boink                                                         #
+######################################################################
+
+work/loader:	work/loader.make
+
+# If the following fails with "line too long", increase BATCHSIZE!
+
+work/loader.make:	loader.xmake work/plain.files.split
+	sed -e 's:^FREQ1=[ 	]*...inherited...$$:FREQ1=$(FREQ1):' \
+	  -e 's:^FREQ2=[ 	]*...inherited...$$:FREQ2=$(FREQ2):' \
+	  -e 's:^IMAGE=[ 	]*...inherited...$$:IMAGE=$(IMAGE):' \
+	  -e 's:^TEXTLOAD=[ 	]*...inherited...$$:TEXTLOAD=$(TEXTLOAD):' \
+	  -e 's:^STATE=[ 	]*...inherited...$$:STATE=$(STATE):' \
+	  -e 's:^CRAPS=[ 	]*...inherited...$$:CRAPS=$(CRAPS):' \
+	  -e 's:^ECHO=[ 	]*...inherited...$$:ECHO=$(ECHO):' \
+	  -e 's:^EGREP=[ 	]*...inherited...$$:EGREP=$(EGREP):' \
+	  -e 's:^CHAROPT=[ 	]*...inherited...$$:CHAROPT=$(CHAROPT):' \
+	  -e 's/\([^ 	]*\)$$%\*\([^ 	]*\)/\1$$%p\2/g' \
+	  -e 's/\([^ 	]*\)$$%p\([^ 	]*\)/'"`(cd work; ls plain-[a-z][a-z])|sed -e 's/\(.*\)/\\\\1\1\\\\2/'|tr '\012' '\040'`"'/g' \
+	  loader.xmake >$@
+
+
+clean:
+	rm -rf work/*
+	rm -rf $(STATE)/*
+	rm -rf $(CRAPS)/*
+	for dir in pack search-engine search3; \
+	do (cd $$dir; make $@); done
+
+dist-clean: clean
+	rm -f loader.xmake
+	rm -f files
+	rm -f Makefile
+	rm -f config.log config.status
+	rm -f bibliography
+	for dir in utils pack toms installdir etc cgi-bin; \
+	do (cd $$dir; make $@); done
+	rm -f *~
+
+
+mostly-clean: clean
+	rm -f bibliography
+	for dir in utils pack toms installdir; \
+	do (cd $$dir; make $@); done
+
+load-clean: clean
+	rm -f bibliography
+	rm -rf $(IMAGE)*
+	mkdir -p $(IMAGE)/
+
+really-clean: load-clean
+
+distclean: dist-clean
+
+dist: dist-clean load-clean
+	tar cf - . | gzip > ../philologic-3.3alpha.tar.gz

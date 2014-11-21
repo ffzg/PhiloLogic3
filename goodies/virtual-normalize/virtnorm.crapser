@@ -1,0 +1,70 @@
+#!/usr/bin/perl
+# $Id: crapser-egrep-2field.plin,v 2.1 2004/08/23 21:45:03 o Exp $
+# This is crapser modified to handle the virtual normalization
+# tables from Northwestern.  
+# Note there are hard coded paths below.
+
+%ACCENTS = ( 'A',       "(a|\xc3\xa0|\xc3\xa1|\xc3\xa2|\xc3\xa3|\xc3\xa4)",
+             'C',       "(c|\xc3\xa7)",
+             'E',       "(e|\xc3\xa8|\xc3\xa9|\xc3\xaa|\xc3\xab)",
+             'I',       "(i|\xc3\xac|\xc3\xad|\xc3\xae|\xc3\xaf)",
+             'N',       "(n|\xc3\xb1)",
+             'O',       "(o|\xc3\xb2|\xc3\xb3|\xc3\xb4|\xc3\xb4|\xc3\xb6)",
+             'U',       "(u|\xc3\xb9|\xc3\xba|\xc3\xbb|\xc3\xbc)",
+             'Y',       "[y\375\377]"   );
+
+$DOTPATTERN = "([a-zA-Z0-9]|[\xa0-\xc3][\xa0-\xc3])";
+
+# We REALLY should just make this standard ... I mean, why are
+# we NOT check for commandline args?  Did not need them in the
+# past.  We will.  Next major revision.
+if ($ARGV[0] =~ /^-/) {
+	$thisarg = $ARGV[0];
+	shift @ARGV; 
+        }
+
+
+while (<>) {
+	chop;
+
+	$prefix = /^\256\?/ ? "\256\?" : /^\256/ ? "\256" : "";
+
+	s/^\256\?*//;
+
+	s/(\([^\)]*)(\|)([^\)]*\))/$1#PIPE#$3/g;
+
+	@patterns = split ('\|', $_);
+
+# Now, we're playing fast and loose here, by isolating the
+# correct field by where in the string it occurs.  Works for
+# three feilds.  We could use something smarter.  mySQL would
+# be much slower ... and remember this gets called for every
+# pattern.  I suspect we could rewrite this in perl to split
+# and search, but I suspect that egrep (particular GNU egrep)
+# is MUCH faster.  So, for the time being....
+
+	foreach $pattern (@patterns) {
+		if ($thisarg eq "-mod") {
+			$pattern =~ s/^(.*)$/^$prefix$1\t/;
+			}
+		elsif ($thisarg eq "-org") {
+			$pattern =~ s/^(.*)$/\t$prefix$1\t/;
+			}
+		elsif ($thisarg eq "-lem") {
+			$pattern =~ s/^(.*)$/\t$prefix$1\$/;
+			}
+		else {
+		      $pattern =~ s/^(.*)$/^$prefix$1\t/;
+			}
+	   }
+
+	$_ = join ("|", @patterns);
+	s/#PIPE#/\|/g;
+
+	s/[ACEINOUY]/$ACCENTS{$&}/ge;
+	s/(\.)([^\*])/$DOTPATTERN$2/g;
+	tr/A-Z/a-z/;
+        #print FRED "$_";
+
+system ("/bin/grep -E -i -e \"$_\" < " . $ENV{SYSTEM_DIR} . "words.R.wom" . " | /usr/bin/gawk -F\"\t\" '{print \$2}' ");
+   }

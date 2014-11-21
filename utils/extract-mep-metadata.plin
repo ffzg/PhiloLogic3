@@ -1,0 +1,306 @@
+# $Id: extract-mep-metadata.plin,v 2.1 2004/08/23 21:45:03 o Exp $
+
+# philologic 2.8 -- TEI XML/SGML Full-text database engine
+# Copyright (C) 2004 University of Chicago
+# 
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the Affero General Public License as published by
+# Affero, Inc.; either version 1 of the License, or (at your option)
+# any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# Affero General Public License for more details.
+# 
+# You should have received a copy of the Affero General Public License
+# along with this program; if not, write to Affero, Inc.,
+# 510 Third Street, Suite 225, San Francisco, CA 94107 USA.
+
+# ==============================================================
+# MEP metadata extractor
+#
+# SOME ARGS:
+
+$ENDOFHEADER = "<\/headnote>";
+
+# Read in a file from argv having the DOCID and then the
+# filename.  This is generated.  You can run a debugging routine
+# to output words, tags and the raw index
+
+$TEXTDIR = $ARGV[0];
+$filelist = $ARGV[1];
+
+if ($ARGV[2] eq "-debug") {
+        $debug = 1;
+        }
+
+# Read in the list of files
+
+chomp($filelist);
+open FILEINTXT, "$filelist";
+while ($filename = <FILEINTXT>) {
+   $filename =~ s/\n//g;
+
+# Put the whole XML document header as a string.
+   $thewholething = "";
+   $pathandfile = $TEXTDIR . "/" . $filename;
+   open (THEXMLFILE, $pathandfile); 
+   while ($inline = <THEXMLFILE>) {
+        $thewholething .= $inline;
+#        last if ($inline =~ /$ENDTAG/i);        
+        }
+   close (THEXMLFILE);
+   $filesize = -s("$pathandfile");
+
+# Let the user know you are loading this offender
+# print STDERR "Extracting metadata from $filename = $filesize\n";
+
+#  Replace  DOS <CR> characters with spaces since they can 
+#  give us all kinds of difficulties.
+   $thewholething =~ s/\015/ /g;
+
+# Then let's split the tags out with newlines and put it all 
+# in a list.
+
+   $thewholething =~ s/\n/ /g;
+   $thewholething =~ s/</\n</g;
+   $thewholething =~ s/>/>\n/g;
+   $thewholething =~ s/\t/ /g;
+   
+   @INSTREAM = split(/\n/, $thewholething);  
+
+   $thewholething = ""; 
+
+   $bytesreadin = 0;
+   $inlinecount = 0;
+   foreach $inline (@INSTREAM) {
+# This is debugging code
+        if ($debug) {
+                print "$inline\n";
+                }
+# End of debugging code
+        $inlinecount += 1;
+        if ($inline =~ /</) {
+                &taghandler($inline)
+                }
+        else {
+                &wordhandler($inline);
+        }
+    } 
+}
+
+# ================= END OF THE FILES =============================
+
+$documentcounter = 0;
+@sortlist = sort @thebibliolist;
+
+foreach $bibline (@sortlist) {
+# Strip the sort key	
+	$bibline =~ s/^[^\t]*\t//;
+# Delete the newline
+	$bibline =~ s/\n//;
+# Add the documentcounter
+	$bibline .= "\t" . $documentcounter . "\n";
+	$documentcounter += 1;
+# And print it.
+	print $bibline;
+	}
+
+
+# ================== THE SUBROUTINES =================================
+
+sub taghandler() { 
+local ($thetag);
+$thetag = $_[0];
+
+# document type
+		if ($thetag =~ /<doc type/i) {
+		   $temp = $thetag;
+		   $temp =~ s/doc type="([^"]*)"//i;
+		   $mepdoctype = $1;
+		   }
+# Author/End Author
+                if ($thetag =~ /<docauthor/i) {
+                    $currentwords = "";
+                    $AUTHOR = 1;
+                    }
+                if ($thetag =~ /<\/docauthor>/i && $AUTHOR) {
+                    $mepdocauthor .= $currentwords . " ";
+                    $currentwords = "";
+                    $AUTHOR = 0;
+                    }
+# Title/End Title
+                if ($thetag =~ /<doctitle/i) {
+                    $currentwords = "";
+                    $TITLE = 1;
+                    }
+                if ($thetag =~ /<\/doctitle>/i && $TITLE) {
+                    $mepdoctitle .= $currentwords . " ";
+                    $currentwords = "";
+                    $TITLE = 0;
+                    }
+# Bibl
+                if ($thetag =~ /<bibl>/i) {
+                    $currentwords = "";
+                    $BIBL = 1;
+                    }
+                if ($thetag =~ /<\/bibl>/i && $BIBL) {
+                    $mepbibl .= $currentwords . " ";
+                    $mepbibl =~ s/  */ /g;
+                    $mepbibl =~ s/ ([\;\,\?\.])/$1 /g;
+
+                    $currentwords = "";
+                    $BIBL = 0;
+                    }
+# IDno
+                if ($thetag =~ /<idno>/i) {
+                    $currentwords = "";
+                    $PUBPLACE = 1;
+                    }
+                if ($thetag =~ /<\/idno>/i && $PUBPLACE) {
+                    $mepidno .= $currentwords . " ";
+                    $currentwords = "";
+                    $PUBPLACE = 0;
+                    }
+# DOCDATE  <docDate value="1928-06-08">
+                if ($thetag =~ /<docdate/i) {
+                    $currentwords = "";
+                    $DATE = 1;
+		    if ($thetag =~ /docDate value=/i) {
+			$temp = $thetag;
+			$temp =~ s/value="([^"]*)"//i;
+			$dateline = $1;
+		        ($mepdocyr,$mepdocmn,$mepdocdy) = split(/-/,$dateline);
+			}
+                    }
+                if ($thetag =~ /<\/docdate>/i && $DATE) {
+                    $mepdocdate .= $currentwords . " ";
+                    $currentwords = "";
+                    $DATE = 0;
+                    }
+# INDEX LEVELS 
+                if ($thetag =~ /<index level/i && $HEADNOTE) {
+		   $temp = $thetag;
+		   $looplimit = 10;
+		   while ($temp =~ /level[1-3]=/) {
+			$temp =~ s/level([1-3])="([^"]*)"//i;
+			$thislevel = $1;
+			$thisidx = $2;
+			if ($thislevel && $thisidx) {
+			    if ($thislevel eq "1") {
+			       $mepindexlevel1 .= $thisidx . "; ";
+			       }
+			    if ($thislevel eq "2") {
+			       $mepindexlevel2 .= $thisidx . "; ";
+			       }
+			    if ($thislevel eq "3") {
+			       $mepindexlevel3 .= $thisidx . "; ";
+			       }
+                           }
+		        }
+                    }
+
+
+# HEADNOTE
+                if ($thetag =~ /<headnote/i) {
+                    $currentwords = "";
+                    $HEADNOTE = 1;
+                    }
+                if ($thetag =~ /<\/headnote>/i && $HEADNOTE) {
+                    $mepheadnote .= $currentwords . " ";
+		    $mepheadnote =~ s/  */ /g;
+		    $mepheadnote =~ s/ ([\;\,\?\.])/$1 /g;
+		    $mepheadnote =~ s/\' /\'/g;
+                    $currentwords = "";
+                    $HEADNOTE = 0;
+                    }
+# XREF in HEADNOTE
+
+		if ($thetag =~ /<xref/i && $HEADNOTE) {
+			$currentwords .= $thetag;
+			}
+		if ($thetag =~ /<\/xref/i && $HEADNOTE) {
+			$currentwords .= $thetag;
+			}
+
+# ====================  THE END OF HEADER TAG   =======================
+#
+# Here's where you pull the record together and generate a
+# sort key, and push it on to the bibliography list for a 
+# default sorted bibliography.
+
+	if ($thetag =~ /$ENDOFHEADER/i) {
+		$theoutrecord =  $mepdoctitle . "\t";
+		$theoutrecord .= $mepdocauthor . "\t";
+                $theoutrecord .= $mepdocyr . "\t";
+		$theoutrecord .= $mepdoctype . "\t";
+		$theoutrecord .= $mepbibl . "\t";
+
+                $theoutrecord .= $mepdocmn . "\t";
+                $theoutrecord .= $mepdocdy . "\t";
+		$theoutrecord .= $mepdocdate . "\t";
+                $theoutrecord .= $mepheadnote . "\t";
+		if (!$mepindexlevel1) {
+			$mepindexlevel1 = "NA1";
+			}
+		if (!$mepindexlevel2) {
+			$mepindexlevel2 = "NA2";
+			}
+		if (!$mepindexlevel3) {
+			$mepindexlevel3 = "NA3";
+			}
+                $theoutrecord .= $mepindexlevel1 . "\t";
+                $theoutrecord .= $mepindexlevel2 . "\t";
+                $theoutrecord .= $mepindexlevel3 . "\t";
+		if (!$mepidno) {
+			$mepidno = $filename;
+			$mepidno =~ s/\.xml//i;
+			}
+		$theoutrecord .= $mepidno . "\t";
+		$theoutrecord .= $filename . "\t";
+		$theoutrecord .= $filesize;
+		$theoutrecord =~ s/^  *//;
+	        $theoutrecord =~ s/\t  */\t/g;
+		$theoutrecord =~ s/\n/ /g;
+
+                if (!$mepdocyr) {
+                        $mepdocyr = "9999";
+                        }
+		if (!$mepdocmn) {
+			$mepdocmn = "99";
+			}
+		$SORTKEYS = $mepdocyr . " " . $mepdocmn . " ";
+		$SORTKEYS .= $mepdocauthor . " ";
+		$SORTKEYS .= $mepdoctitle . " \t";
+		$counter += 1;
+		
+		$theoutrecord = $SORTKEYS . $theoutrecord . "\n"; 
+		push (@thebibliolist, $theoutrecord);
+
+		$mepdoctitle = "";
+                $mepdocauthor = "";
+                $mepdocyr = "";
+                $mepdocmn = "";
+                $mepdocdy = "";
+		$mepbibl = "";
+		$mepdocdate = "";
+		$mepheadnote = "";
+		$mepdoctype = "";
+		$mepindexlevel1 = "";
+		$mepindexlevel2 = "";
+		$mepindexlevel3 = "";
+		$mepidno = "";
+		$filename = "";
+		$filesize = "";
+
+		}
+}
+
+sub wordhandler() {
+local ($thewords);
+$thewords = $_[0];
+
+	$currentwords .= $thewords;
+}
+

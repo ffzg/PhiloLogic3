@@ -1,0 +1,202 @@
+.toggleable  div {
+	display: none;
+        border: 2px solid #556289;
+}
+
+div.example {
+	display: inline;
+	border: none;
+}
+
+#mainfields {
+	text-align: center;
+}
+
+.textobjs {
+        border: 2px solid #556289;
+}	
+
+BODY {
+      FONT-FAMILY: helvetica, arial, sans-serif; FONT-SIZE: 14px;
+
+	  background: #ffffff;
+}
+
+html { height: 100%; margin-bottom: 1px; }
+
+//html { overflow:-moz-scrollbars-vertical;}
+
+
+h1 {
+	text-align: center;
+	font-weight: normal;
+	color: #fff;
+	font-family: Helvetica, Arial;
+        font-size: 18px;
+        border-top: 2px solid #556289;
+        border-bottom: 2px solid #556289;
+        padding: 0px;
+	padding-top: 4px;
+        margin: 0;
+        background-color: #242E55;
+}
+
+#basicform {
+	margin: 3px;
+	display: inline;
+}
+
+#basicform input {
+	font-size: 12px;
+}
+
+.example {
+	font-size: 11px;
+	margin: 0px;
+	display: block;
+}
+
+#foot {
+	text-align: center;
+}
+
+h2 {
+        font-family: Helvetica, Arial;
+        font-size: 16px;
+        padding: 0px;
+        padding-top: 4px;
+        margin: 0;
+        border-bottom: 1px solid #556289;
+
+}
+
+blue {
+	color: #556289;
+}
+
+A         { color: #900000; }
+A:link	  { color: #900000; }
+A:visited { color: #900000; }
+
+#mainsearch {
+	width: 55%;
+	float: left;
+}
+
+#info {
+	padding: 5px;
+}
+
+#query {
+	width: 43%;
+	float: right;
+}
+
+#querytext, #maincontents {
+	margin-left: 10px;
+	margin-top: 5px;
+}
+
+
+#topbuttons {
+	margin-left: 200px;
+}
+
+.searchnote {
+	text-align : left; 
+	margin-left: 50px; 
+	padding-left : 1%;
+	padding-right : 1%;
+	width : 80%; 
+}
+
+
+fieldset {
+	border: none;
+}
+
+
+input { 
+	color: #000033;
+	background-color: #dde3ef;  
+	font-family: Verdana, Helvetica, sans-serif;  
+	font-size: 10px;  
+	font-weight: plain; 
+}
+
+#word {
+	font-size: 13px;
+	width: 250px;
+	margin: 0;
+}
+
+#nav ul {
+	clear: both;
+	font-family: Helvetica, Arial;
+	font-size: 14;
+	border-bottom: 2px solid #556289;
+	padding-left: 0;
+	margin: 0;
+	margin-bottom: 0;
+	padding: 3px;
+	white-space : nowrap;
+        color: #242E55;
+}
+
+#nav ul li{
+	display: inline;
+	margin: 2px 2px 0 2px;
+	border: 1px solid #242E55;
+	padding: 3px;
+}
+
+#nav ul li a {
+	color: #242E55;
+	font-weight: normal;
+	text-decoration: none;
+}
+
+#nav ul li a. {
+        color: #242E55;
+        font-weight: normal;
+        text-decoration: none;
+}
+
+#nav ul li a:hover {
+	color: #520602;
+	border-top: 10px;
+}
+
+#nav ul li.activenav  {
+	font-weight: bold;
+	background-color: #242E55;
+}
+
+#nav ul li.activenav a {
+	color: #fff;
+}
+
+.flash {
+        background-color: #dde3ef;
+}
+
+#nav ul li.flashnav  {
+	font-weight: bold;
+	background-color: #dde3ef;
+}
+
+#nav ul li.flashenav a {
+	color: #fff;
+}
+
+label.textfield {
+	display: block;
+	float: left;
+	width: 130px;
+}
+
+#mainbib label.textfield {
+        display: block;
+        float: left;
+        width: 80px;
+}

@@ -1,0 +1,434 @@
+#!@PERL@ # might not be needed or might be doubled...
+# $Id: subdocgimme.sql.in,v 2.11 2004/11/16 00:44:05 o Exp $
+# 
+# ======================== subdocgimme.sql =============================
+# NEEDS A DESCRIPTION.... 
+# ===============================================================
+# Use the perl DBI interfacing package.  This is fully documented
+# in Paul DuBois, MySQL (New Riders, 2000).  The perl:DBI package
+# must be installed.
+
+use DBI;
+
+# Get the SYSTEM_DIR from the environment and read format.ph.  This 
+# includes the connection arguments, field list, and field type to
+# form the query.  to get some required variables and subroutines. 
+
+$SYSTEM_DIR = $ENV{SYSTEM_DIR};
+unshift (@INC, $SYSTEM_DIR . "lib");
+require "philosubs.pl";
+
+# ARGS: -debug -v and then one of -div -subdiv
+# Process command line args
+if ($ARGV[0] eq "-debug") {shift @ARGV; $debug++;}
+if ($ARGV[0] eq "-v") {shift @ARGV; $verbose++;}
+if ($ARGV[0] eq "-div") {shift @ARGV; $divlevel++;}
+if ($ARGV[0] eq "-subdiv") {shift @ARGV; $subdivlevel++;}
+
+if (!$divlevel && !$subdivlevel) {
+        $divlevel++;
+}
+
+$wehavebib = 0;
+
+# This script was modified from a more general system to handle
+# direct WWW implementations, so we may not need all the following
+# preliminaries.
+
+while ($arg = shift (@ARGV)) {
+       $arg = '$' . $arg;
+       $arg =~ s/\+/ /g;
+       $arg =~ s/%../pack("H2", substr($&,1))/ge;
+       $arg = &postfix2UTF8($arg);
+       $mvoarg = $arg;
+       $arg =~ s/^(.[^=]*=)(.*$)/$1'$2'/;
+       $mvoarg =~ s/\$//;
+       ($mvoarg1,$mvoarg2) = split(/=/,$mvoarg);
+       if ($mvoarg2 eq "ZERO") {
+                $mvoarg2 = "0";
+                }
+       @queryhash{$mvoarg1} = $mvoarg2;
+
+        if ($debug) {
+                print "$mvoarg1 $mvoarg2\n";
+                }
+
+# Store Bibliodata in hash ... evaluate other variables...
+       if (@BIBOPS{$mvoarg1}) {
+                $wehavebib = 1;
+          }
+       else {
+            eval $arg;
+        }
+   }
+
+
+if ($divlevel) {
+	$objectdepth = 4;
+	$TABLE = $SQLDIVTABLENAME;
+	$outputfield = "dgphilodivid";
+	$sortorder = " dgphilodocid, dgphilodivid ";
+	foreach $i (@DIVINDEX_FIELDS) {
+		 push (@thefields, $i);
+		}
+        # This is to expand the list of sub objects to search....
+        # we will probably not need it when Leonid fixes search3 to
+        # handle -1 args.....
+        if (!$verbose) {
+                $thechildfile = $SYSTEM_DIR . "/dividxchild.tab";
+                if (-e $thechildfile) {
+                        open(THEDIVCHILD, $thechildfile);
+                        while ($linein = <THEDIVCHILD>) {
+                                $linein =~ s/\n//;
+                                ($thekey, $thekids) = split("\t", $linein);
+                                $thedivkids{$thekey} = $thekids;
+                                $numofkids++;
+                                }
+                        close(THEDIVCHILD);
+                        }
+                }
+        }
+else {
+        $objectdepth = 5;
+	$outputfield = "dgphilosubdivid";
+	$sortorder = " dgphilodocid, dgphilosubdivid ";
+	$TABLE = $SQLSUBDIVTABLENAME;
+        foreach $i (@SUBDIVINDEX_FIELDS) {
+                 push (@thefields, $i);
+                }
+}
+
+if ($debug) {
+	print "DEBUG: $TABLE\n";
+	}
+
+
+# If we don't have a bibliography, let's just generate the
+# required all search SQL query.
+
+if ($wehavebib eq 0) {
+    if ($verbose && $xxbrowse) {
+        $query1 = "select $xxbrowse from $TABLE  ";
+        }
+    elsif ($verbose) {
+        $query1 = "select * from $TABLE ";
+         }
+    else {
+        $query1 = "select $outputfield from $TABLE  ";
+        }
+    if ($sortorder) {
+        $query1 .= " order by " . $sortorder . ";";
+        }
+    else {
+        $query1 .= "order by dgphilodocid;";
+        }
+    $GETALLFLAG = 1;
+}
+
+
+# So let's connect to the SQL server
+   
+my $dbh = DBI->connect ($CONNECTSTRING, $USER, $PASSWD)
+  or
+  $MVOERROR = $DBI::errstr;
+
+# This won't work for search2t .... we need a mechanism to get this
+# error message out ... probably by checking the contents of
+# CORPUS for this message.  We've never had a problem, but this is
+# probably only because we got lucky.
+
+if ($MVOERROR) { 
+   $errorfile = "$PHILOTMP/SUBDOCSQLGIMME_ERROR";
+   open (ERRORFILE, ">$errorfile");
+   print ERRORFILE "<b>Internal Error</b>.  Database handle not defined. <br>"; 
+   print ERRORFILE "Error Message: $MVOERROR ";
+   print ERRORFILE "<br>";
+   print ERRORFILE "Please contact $ERRORCONTACT and include the Error Message";
+   close (ERRORFILE);
+   exit;
+   }
+
+# Two subroutines, which should be split into a couple more
+# the first to build the query and the second to push a search
+# and format results, in this case, the philodocid output as an
+# integer.
+
+if (!$GETALLFLAG) {
+	&get_query;
+	}
+
+if ($debug) {
+print "$query1\n";
+print "$xxbrowse\n";
+}
+
+# A poor man's tokenizer could be put in here by uncommenting the 
+# two lines below.  This takes the "@" and translates it into
+# a pattern to force word matching between non-alpha characters or
+# at the beginning of a string, or end at the end of a string.  You
+# would probably need to check values, but this is known to work
+# as is.  Set in the configuration.
+if ($SQLPOORMANSTOKENIZER) {
+	$query1 =~ s/\@([a-zA-Z0-9\[])/(\[^a-zA-Z0-9\]|^)$1/g;
+	$query1 =~ s/([a-zA-Z0-9\]])\@/$1\([^a-zA-Z0-9\]|\$)/g;
+}
+
+# =================== Optimize mySQL searches ====================
+# Optimization for mySQL searches.  By default, we are using
+# the mySQL regexp search function on strings.  We do this in
+# order to support regular expression matching for wild cards,
+# the poor man's tokenizer above, and our match all accented
+# characters convention A = a[INT-INT].  But many, even most
+# queries do not need this.  The mySQL regexp operator is slow
+# and does not benefit from indexing in mySQL.  So, the following
+# simply replaces "regexp" function with "like" if it matches
+# characters.  One could extend or restrict this this pattern as 
+# required in philo-db.cfg.   This needs to be turned ON in
+# philo-db.cfg.  It is known to work for searches and browsefields.
+# Makes a huge difference for searches on large tables.
+
+  if ($OPTIMIZESQL) {
+    if (!$SQLOPTSTRING) {
+         $SQLOPTSTRING = "[ \'a-z0-9A-Z\177-\377]*";
+         }
+    if ($query1 =~ m/regexp +"$SQLOPTSTRING"/) {
+        $query1 =~ s/regexp +"($SQLOPTSTRING)"/ like "%$1%"/g;
+        }
+    }
+
+
+# Now, run the query and pump out the results.  This should be
+# split up...
+&go;
+
+# ===================================================================
+# ======================= Subroutines ===============================
+# ===================================================================
+# Get query simply builds the SQL query from the arguments stored
+# in the query_hash by looping through the list of fields that are
+# found in Biblio_Fields.  If you have an argument for this, it
+# checks the type, and then formats is into a simple SQL string.
+
+sub get_query {                                           # What kind of query
+    if ($verbose && $xxbrowse) {                          # Contents of field
+        $query1 = "select $xxbrowse from $TABLE where ";  # for browse.
+        }
+    elsif ($verbose) {                                    # Contents of all
+        $query1 = "select * from $TABLE where ";          # fields for bib.
+         }
+    else {
+        $query1 = "select $outputfield from $TABLE where "; # SubDoc ID for
+        }                                                   # text search
+
+
+     foreach $arg10 (@thefields) {
+        if (length(@queryhash{$arg10}) gt 0) {
+           $qnam = $arg10;
+	   $qval = @queryhash{$arg10};
+           $qop = @BIBOPS{$arg10};
+# Regular Expression operator
+
+	   if ($qop eq "regexp") {	
+                if ($turnonand eq 1) {
+	           $query1 .= " AND ";
+	           } 
+                if ($qval =~ / AND / || $qval =~ / OR / || $qval =~ / NOT /) {
+                   $qval = &expand_query($qval, "$qnam", "regexp");
+                   $query1 .= " " . $qval . "  ";
+                   }
+		elsif ($qval =~ /^NOT /) {
+		     $qval =~ s/^NOT //g;
+		     $qval =~ s/[ACEINOUY]/$ACCENTS{$&}/ge;
+		     $query1 .= " $qnam NOT regexp \"$qval\" ";
+		     }
+                else {
+	           $qval =~ s/[ACEINOUY]/$ACCENTS{$&}/ge;
+                   $query1 .= " $qnam regexp \"$qval\" ";
+                   }
+               $turnonand = 1;
+	    }
+
+# Numeric Operator 
+            if ($qop eq "numeric") {
+                if ($turnonand eq 1) {
+                   $query1 .= " AND ";     
+                   }
+                if ($qval =~ / OR /) {
+                   $qval = &expand_query($qval, "$qnam", "=");
+                   $query1 .=  $qval . " ";
+                   }
+                elsif ($qval =~ /\-/) {
+                       if ($qval =~ /-$/) {
+			   $qval .= "9998";      # an end, some products have
+		           }                     # unknown dates set to 9999
+                       if ($qval =~ /^-/) {
+                           $qval = "0" . $qval;
+                           }
+
+                   ($d1, $d2) = split(/-/,$qval);
+                   $qval = "($qnam >= \"".$d1."\" AND $qnam <= \"".$d2."\") ";
+                   $query1 .= $qval;
+                   }
+                else {
+                   $query1 .= "$qnam = \"$qval\" ";
+                   }
+             $turnonand = 1;
+             }
+# Exact match.  MVO added OR support in this 09-22-04
+            if ($qop eq "exact") {      
+	    	   if ($qval =~ / OR /) {         
+		      $qval = &expand_query($qval, "$qnam", "=");
+		      $query1 .=  $qval . " ";
+		      }
+		   else {
+                       $query1 .= "$qnam = \"$qval\" ";
+		       }
+                   $turnonand = 1;
+             }
+	}
+    }
+
+# Sort Order: removed because of sort errors.....
+#    if ($sortorder) {
+#        $query1 .= " order by " . $sortorder . ";";
+#        }
+#    else {
+#        $query1 .= "order by dgphilodocid;";
+#       }
+     $query1 .= ";";
+}
+
+# Run the search and format the results.  First important think to 
+# notice.  We only have THREE LINES actually talking to the server.
+# We are expecting three different kinds of results. 
+
+sub go {
+   if ($sth = $dbh->prepare($query1)) {
+           $sth->execute();
+           while (@results = $sth->fetchrow ) { 
+                if ($verbose) {
+                        foreach $filres (@results) {
+                                if ($xxbrowse) {
+					$filres = &BrowseTermsFormat($filres);
+                                        print $filres;
+                                        }
+                                else {
+                                        print $filres . "\t";
+                                        }
+                                }
+                        print "\n";
+                        }
+                else {
+                        $resphilosubdocid = @results[0];
+			&PrintPacked($resphilosubdocid);
+                        }
+                  }
+            }
+     }
+
+
+# Expand query is not finished.  It takes the individual query argument,
+# the field to query, and the operator as arguments from the general
+# query processor.  It expands AND, NOT, OR operators as required.
+# This could be extended significantly to impose binding orders, 
+# accept native SQL constructs, and so on.  We decided to keep it all
+# very simple.  
+
+sub expand_query {
+         local ($q, @qq, $qt, $outq, $qq, $q2, $op, $nextnot);
+	 $nextnot = 0;
+         $q = $_[0];
+         $qt = $_[1];
+         $op = $_[2];
+	 $q =~ s/  */\_/g;
+	 $q =~ s/\_OR\_/ OR /g;
+	 $q =~ s/\_AND\_/ AND /g;
+	 $q =~ s/\_NOT\_/ NOT /g;
+         @qq = split(/ /,$q);
+         $outq = "(";
+         foreach $q2 (@qq) {
+		if ($q2 ne "OR" && $q2 ne "AND" && $q2 ne "NOT") {
+			$q2 =~ s/[ACEINOUY]/$ACCENTS{$&}/ge;
+			}
+                if ($q2 eq "OR" || $q2 eq "AND") {
+                            $outq .= " $q2 ";
+                     }
+		elsif ($q2 eq "NOT") { 
+			$nextnot = 1;
+			}
+                else {
+			$q2 =~ s/\_/ /g;
+			if ($nextnot eq 1){ 
+                            $outq .= " AND (".$qt." NOT ".$op." \"". $q2."\")";
+			    $nextnot = 0;
+			    }
+			else {
+			    $outq .= "(".$qt." ".$op." \"". $q2."\")";	
+			    }
+                     }
+         }
+         $outq .= ")";
+	 if ($outq =~ / AND / && $outq =~ / OR /) {
+		$outq =~ s/ AND /) AND (/g;
+		$outq = "(" . $outq . ")";
+		}
+         return $outq;
+}
+
+sub PrintPacked() { 
+	local ($thisid, $xxx, $i);
+	$thisid = $_[0];
+        if ($numofkids) {
+                $inkids = "";
+                $inkids = $thedivkids{$thisid};
+                }
+##########################################################################
+# In the case of a NOT query, do not generate the child list.  This is
+# because nested objects can have different types.  Thus a div1 type=chapter
+# which contains a div2 type=letter, would match on a NOT letter search.
+# If you propagate the children, you will get the div2 letter.  I think
+# the object NOT works in exactly the opposite way from a normal object
+# search, where you want to search all the children.  This is open
+# to discussion.  MVO 9-14-05 
+##########################################################################
+        if ($query1 =~ / NOT /) {
+                $inkids = 0;
+                }
+####################### END PATCH ########################################
+        if ($inkids) {
+		$inkids = $thisid . "|" . $inkids;   # Patch MVO 03/06/08
+                &PrintDivChildren($inkids);
+                }
+        else {
+                @xxx = split(":", $thisid);
+                $nullvalue = "0";
+                for ($i=0; $i < $objectdepth; $i++) {
+                        if (length($xxx[$i]) < 1) {
+                                $xxx[$i] = $nullvalue;
+                                $nullvalue = "-1";      
+                        }
+                        print pack ('i', $xxx[$i]);
+                }
+	  }
+
+}
+
+
+sub PrintDivChildren() {
+        local ($allthekids, $children, $kid, $nn, $nullvalue);
+        $allthekids = $_[0];
+        @children = split (/\|/, $allthekids);
+        foreach $kid (@children) {
+                @nn = split(/:/, $kid);
+                $nullvalue = "0";
+                for ($i=0; $i < $objectdepth; $i++) {
+                        if (length($nn[$i]) < 1 ) {
+                                $nn[$i] = $nullvalue;
+                                $nullvalue = "-1";
+                                }
+                        print pack ('i', $nn[$i]);
+                        }
+                }       
+        }
+
+

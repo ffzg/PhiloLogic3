@@ -1,0 +1,89 @@
+# $Id: tomsload1.plin,v 2.1 2004/08/23 21:45:03 o Exp $
+
+# philologic 2.8 -- TEI XML/SGML Full-text database engine
+# Copyright (C) 2004 University of Chicago
+# 
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the Affero General Public License as published by
+# Affero, Inc.; either version 1 of the License, or (at your option)
+# any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# Affero General Public License for more details.
+# 
+# You should have received a copy of the Affero General Public License
+# along with this program; if not, write to Affero, Inc.,
+# 510 Third Street, Suite 225, San Francisco, CA 94107 USA.
+
+if ( $#ARGV != 1 )
+{
+    print STDERR "usage: tomsload1 infofile object\n";
+    exit 1;
+}
+
+$infofile = shift @ARGV; 
+
+$o = shift @ARGV;    #object
+
+$tag = (split ('-', $infofile))[1];
+
+open ( I, $infofile ); 
+
+while ( <I> )
+{
+    chop; split; 
+#    push ( @ofs, $_[$#_] ); 
+    $ofs[$_[0]] = $_[$#_]; 
+}
+
+close I; 
+
+$last = 99999;
+
+while (<>)
+{
+    chop; 
+    split; 
+
+    if ( $_[0] eq $o )
+    {
+	if ( $_[1] != $last )
+	{
+	    if ( $_[1] )
+	    {
+		&pack3 ($ofs[$last]);
+		close OUT;
+	    }
+
+	    $tmpf = ">temp-" . $tag . "/objects." . $o . "." . $_[1];
+	    open OUT, $tmpf;
+
+	    $last = $_[1];
+	}
+
+	&pack3 ($_[$#_]);
+    }
+
+}
+
+&pack3 ($ofs[$last]);
+close OUT;
+
+exit (0); 
+
+
+sub pack3 
+{
+    for $c (@_)
+    {
+	for ($i=0; $i<3; $i++)
+	{
+	    $b = (($c & (255 << $i*8)) >> $i*8); 
+	    print OUT (pack('C',$b));
+	}
+    }
+}
+
+

@@ -1,0 +1,67 @@
+# $Id: dividxhashmake.pl.plin,v 2.1 2004/08/23 21:45:03 o Exp $
+# -----------------------------------------------------------------------
+# philologic 3.0 -- TEI XML/SGML Full-text database engine
+# Copyright (C) 2004 University of Chicago
+# 
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the Affero General Public License as published by
+# Affero, Inc.; either version 1 of the License, or (at your option)
+# any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# Affero General Public License for more details.
+# 
+# You should have received a copy of the Affero General Public License
+# along with this program; if not, write to Affero, Inc.,
+# 510 Third Street, Suite 225, San Francisco, CA 94107 USA.
+#
+# This is a function to generate child div object lists.  One day,
+# we will add a div wild card to force child searching.  For now,
+# this generates a look-up table read by subdocgimme series.
+# It is an ugly solution.  
+# Last Modified: MVO May 2005 (I think).
+
+$thelist = "";
+$thehashlist = "";
+
+while ($line = <>) {
+	@results = split("\t", $line);
+	$thisone = $results[0] . ":";
+	push (@thelist, $thisone);
+	$x++;
+	}
+$lofthelist = $x;
+$y = 1;
+$a = $thelist[0];
+$b = $thelist[1];
+while ($y <= $lofthelist) {
+	if ($b =~ /^$a/) {
+		if ($a eq $b) {
+			$donothing = 1;
+			$y++;
+			$b = $thelist[$y];
+			}
+		else {
+			$c = $b;
+			$c =~ s/:$//;
+			$thehashlist{$a} .= $c . "|";
+			$y++;
+			$b = $thelist[$y];
+			}
+		}
+	else {
+		$a = $b;
+		$y++;
+		$b = $thelist[$y];
+		}
+	}
+
+foreach $hashkey (sort keys(%thehashlist)) {
+	$thehashlist{$hashkey} =~ s/\|$//;
+	$hashkeyout = $hashkey;
+	$hashkeyout =~ s/:$//;
+ 	print $hashkeyout . "\t" . $thehashlist{$hashkey}. "\n";
+	}
+	

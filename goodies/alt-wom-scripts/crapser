@@ -1,0 +1,66 @@
+#!/usr/bin/perl
+# $Id: crapser-egrep-2field.plin,v 2.1 2004/08/23 21:45:03 o Exp $
+%ACCENTS = ( 'A',       "(a|\xc3\xa0|\xc3\xa1|\xc3\xa2|\xc3\xa3|\xc3\xa4)",
+             'C',       "(c|\xc3\xa7)",
+             'E',       "(e|\xc3\xa8|\xc3\xa9|\xc3\xaa|\xc3\xab)",
+             'I',       "(i|\xc3\xac|\xc3\xad|\xc3\xae|\xc3\xaf)",
+             'N',       "(n|\xc3\xb1)",
+             'O',       "(o|\xc3\xb2|\xc3\xb3|\xc3\xb4|\xc3\xb4|\xc3\xb6)",
+             'U',       "(u|\xc3\xb9|\xc3\xba|\xc3\xbb|\xc3\xbc)",
+             'Y',       "[y\375\377]"   );
+
+$DOTPATTERN = "([a-zA-Z0-9]|[\xa0-\xc3][\xa0-\xc3])";
+
+while (<>)
+   {
+
+	chop;
+
+# postfix to ISO
+
+    s/a\//\341/g;
+    s/a\\/\304/g;
+    s/a^/\342/g;
+    s/c\,/\347/g;
+    s/e\"/\352/g;
+    s/e\\/\350/g;
+    s/e\//\351/g;
+    s/e^/\352/g;
+    s/i\\/\354/g;
+    s/i\//\355/g;
+    s/i\"/\357/g;
+    s/i^/\356/g;
+    s/o^/\364/g;
+    s/u\//\374/g;
+    s/u\\/\371/g;
+    s/u^/\373/g;
+
+	$prefix = /^\256\?/ ? "\256\?" : /^\256/ ? "\256" : "";
+
+	s/^\256\?*//;
+
+	s/(\([^\)]*)(\|)([^\)]*\))/$1#PIPE#$3/g;
+
+	@patterns = split ('\|', $_);
+
+	foreach $pattern (@patterns)
+{
+#               $pattern =~ s/^(.*)$/^$prefix$1\$/;
+    if ($pattern =~ /[\177-\377][\177-\377]/) {
+	$pattern =~ s/^(.*)$/\t$1\$/;
+    }
+    else {
+	$pattern =~ s/^(.*)$/^$prefix$1\t/;
+    }
+}
+
+
+	$_ = join ("|", @patterns);
+	s/#PIPE#/\|/g;
+
+	s/[ACEINOUY]/$ACCENTS{$&}/ge;
+	s/(\.)([^\*])/$DOTPATTERN$2/g;
+	tr/A-Z/a-z/;
+
+system ("/usr/bin/grep -E -i -e \"$_\" < " . $ENV{SYSTEM_DIR} . "words.R.wom" . " | /sw/bin/gawk -F\"\t\" '{print \$2}' ");
+   }

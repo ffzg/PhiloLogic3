@@ -1,0 +1,69 @@
+PhiloLogic's distribution is still very much beta-quality, and to
+date it has been installed almost exclusively by people who are
+experts in its intricacies.  If don't complete an installation, even
+if you just unpack it and lose interest, we'd really like to hear
+about it so we can make the package install in a more sensible way.
+Of course we'd love to hear that you have completed an installation
+and are searching tons of text, as well.  Please write to
+support@philologic.uchicago.edu with your reports.
+
+depends: gawk, perl, gdbm/gdbm-dev, gnutar, egrep, GNU ld (binutils),
+	 gnu sort (coreutils)
+ 
+optional depends: mysql, agrep
+
+If you have all the prerequisites in standard locations for your system,
+installation is a snap:
+
+$ ./configure CFLAGS="-O3" CPPFLAGS="-I/non/standard/include/path/" LDFLAGS="-L/non/standard/library/path/" --with-various-options 
+#by default, GNU will set CFLAGS to "-g -O", which is relatively low-performance.  
+#ARTFL reccommends CFLAGS="-O3" for blistering speed.
+$ sudo make install
+Manually add the cronjob from cgi-bin/hitlist.del.cron to crontab
+$ less LOADING
+
+Note that we don't run a default make command.  make install will 
+build everything for you.
+
+
+There are a reasonably large number of configurable options,
+and although they will all default to reasonable values for whichever
+operating system you happen to be using, you might want to make sure.
+
+These are the key ./configure arguments [default Linux values follow in
+brackets.  Configure will adjust for Mac OS X, and print out its opinion.]
+
+  --with-authuser-group=groupname       name of group authorized to build
+                                PhiloLogic databases [philologic]
+  --with-cgi-path=DIR   sets filesystem path to cgi-bin directory
+                        [/var/www/cgi-bin/philologic]
+  --with-cgi-url=DIR    sets URL path to cgi-bin directory [/cgi-bin/philologic]
+  --with-web-path=DIR   sets filesystem path for sample search page
+                        and source downloads [/var/www/html/philologic]
+  --with-web-url=DIR    sets URL path for sample search page
+                        and source downloads [/philologic]
+  --with-init-d=DIR     sets path to initscripts directory [/etc/init.d]
+  --with-boot-init-d=DIR        sets path to default boot init.d directory
+                                [/etc/rc2.d]
+
+You may also want to set the autoconf variables
+--sysconfdir=[something other than /etc], --bindir=[something other
+than /bin] and --localstatedir=[something other than /var (by default
+most of the install ends up in /var/lib/philologic)].  You can NOT
+successfully specify a PREFIX with make install PREFIX=/usr/local;
+this just ends up being ignored.
+
+For instructions on loading texts, see LOADING
+
+Mac OS X Hints
+______________
+Getting all the dependencies installed for Mac OS X can be a bit tricky.
+GDBM's source distribution has a bungled makefile, so we reccommend using
+Fink to grab it.  If you do that, however, Fink will install the libraries
+and headers to a non-standard location, so you'll have to run configure 
+with the appropriate CPPFLAGS and LDFLAGS values set.  For example, if
+Fink installs headers to /sw/include, and libraries to /sw/lib,
+you should run configure like so:
+
+./configure CFLAGS="-O3" CPPFLAGS="-I/sw/include/" LDFLAGS="-L/sw/lib/"
+

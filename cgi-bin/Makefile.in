@@ -1,0 +1,29 @@
+# $Id: Makefile.in,v 2.12 2004/11/16 00:44:05 o Exp $
+# @configure_input@
+SCRIPTS = search3 getobject.pl nserver.pl artfl_conc.pl getrawdoc.pl artfl_kwic.pl artfl_pole.pl hitlist.del.cron select.pl contextualize.pl navigate.pl showrest_ getsource.pl search3t theme_rheme.pl philohistory.pl artfl_sortedkwic.pl kwicresort.pl getwordcount.pl getnote.pl
+
+SOURCES = getobject.pl.plin nserver.pl.plin artfl_conc.pl.plin getrawdoc.pl.plin artfl_kwic.pl.plin artfl_pole.pl.plin hitlist.del.cron.plin select.pl.plin contextualize.pl.plin navigate.pl.plin showrest_.plin Makefile.in getsource.pl.plin search3t.plin theme_rheme.pl.plin philohistory.pl.plin artfl_sortedkwic.pl.plin  kwicresort.pl.plin getwordcount.pl.plin getnote.pl.plin
+
+%:      %.plin
+	../config.status --file=$@:$@.plin
+	chmod +x $@
+
+all: $(SCRIPTS)
+
+clean:
+	rm -f $(SCRIPTS) *~
+
+dist-clean: clean
+	rm -f config.log
+
+distclean: dist-clean
+
+install: all
+#	@INSTALL@ -d @cgi_path@/
+	../mkinstalldirs @cgi_path@/
+	for foo in $(SCRIPTS); do \
+	@INSTALL@ $$foo @cgi_path@/; done
+	@INSTALL@ -d @localstatedir@/lib/philologic/cgi-bin
+	@INSTALL@ $(SOURCES) @localstatedir@/lib/philologic/cgi-bin/
+	rm -f @localstatedir@/lib/philologic/local-cgi-bin
+	@LN_S@ -f @cgi_path@/ @localstatedir@/lib/philologic/local-cgi-bin

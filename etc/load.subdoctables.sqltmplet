@@ -1,0 +1,41 @@
+use philologic;
+
+drop table if exists ...DBNAME...dividx;
+ 
+create table ...DBNAME...dividx (
+dgphilodivid VARCHAR(250),
+dgdivhead VARCHAR(250),
+dgdivtype VARCHAR(250),
+dgdivlang VARCHAR(250),
+dgdivn VARCHAR(250),
+dgdivid VARCHAR(250),
+dgdivocauthor VARCHAR(250),
+dgdivocdateline VARCHAR(250),
+dgdivocplacename VARCHAR(250),
+dgdivocsalutation VARCHAR(250),
+dgdivocclassification VARCHAR(250),
+dgdivocpartofspeech VARCHAR(250),
+dgdivxpath TEXT,
+dgphilodocid SMALLINT(4));
+
+load data local infile "...IMAGE.../divindex.raw" into table ...DBNAME...dividx
+fields terminated by "\t"
+lines terminated by "\n";
+
+drop table if exists ...DBNAME...subdividx;
+
+create table ...DBNAME...subdividx (
+dgphilosubdivid VARCHAR(250),
+dgsubdivtag VARCHAR(250),
+dgsubdivtype VARCHAR(250),
+dgsubdivn VARCHAR(250),
+dgsubdivid VARCHAR(250),
+dgsubdivwho VARCHAR(250),
+dgsubdivlang VARCHAR(250),
+dgsubdivxpath TEXT,
+dgphilodocid SMALLINT(4));
+
+load data local infile "...IMAGE.../subdivindex.raw" into table ...DBNAME...subdividx
+fields terminated by "\t"
+lines terminated by "\n";
+

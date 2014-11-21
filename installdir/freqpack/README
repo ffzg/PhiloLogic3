@@ -1,0 +1,14 @@
+To create frequncy tables, search forms and cgis scripts for your 
+database issue the command, from within this directory:
+
+makefrequencies yourdatabase
+
+If this does not work, check the perl path specified in makefrequencies 
+and adjust it to be your path. Also, make sure that perl is in your 
+shell's PATH.
+
+Then, check your webpath for yourdatabase.frequencylists.html and 
+yourdatabase.timeseries.html. If all went well, you should be able 
+to use these forms, editing them to suit your need and the specifics 
+of your database.
+

@@ -1,0 +1,48 @@
+﻿DOCUMENTATION
+
+Searching for words in foreign languages, particularly languages with non-Latin scripts, can be tricky for users. We developed a mechanism to allow for searching both lemmatized and indexed versions of words.
+
+During the load process, PhiloLogic creates a word index file named words.R and two-column version called words.R.wom. At this point, the two columns words.R.wom should be identical. So the first thing we'll need to do is re-generate words.R.wom with lemmatized versions of the indexed words occupying the second column. We provide a sample make_wom_words.R script that assumes the text we're dealing with is roman with indic diacritics. The make_wom_words script calls an external hash table that maps certain UTF8 characters to their ASCII "romanized" equivalent. You'll want to generate your own character or word table depending on what your data looks like. A sample div index and words.R file have been included to help illustrate the steps involved.
+
+cp /var/lib/philologic/goodies/ALT_WOM_SCRIPTS/characters.pl ./
+cp /var/lib/philologic/goodies/ALT_WOM_SCRIPTS/make_wom_words.R.pl ./
+mv words.R.wom words.R.wom.old
+./make_wom_words.R.pl words.R > words.R.wom
+
+You'll need a special modified version of crapser for searching both columns in the words.R.wom index. Either copy in this modified version:
+
+mv crapser crapser.old
+cp /var/lib/philologic/goodies/WOM_SCRIPTS/crapser ./
+
+or make the modifications to crapser yourself replacing the following lines:
+
+{
+#               $pattern =~ s/^(.*)$/^$prefix$1\$/;
+     if ($pattern =~ /[\177-\377][\177-\377]/) {
+       $pattern =~ s/^(.*)$/\t$1\$/;
+     }
+     else {
+       $pattern =~ s/^(.*)$/^$prefix$1\t/;
+     }
+ }
+
+with:
+
+{
+	#$pattern =~ s/^(.*)$/^$prefix$1\$/;
+	$pattern =~ s/^(.*)$/^$prefix$1\t/;
+}
+
+PhiloLogic 3 allows you to search across all objects in a given corpus based on their encoded "type". For example, we use this for searching across headwords (div type=article) in dictionaries of South Asian languages and across articles in the Encyclopédie. In order to allow for "romanized" searching of div objects, you'll need to re-generate the divindex.raw file in addition to replacing the old subdocgimme with the included modified version. This process is similar to the generation of the words.R.wom file only it requires that we add a new column to our div index. Accordingly, a few modifications need to be made to subdocgimme and to search3t.
+
+mv divindex.raw divindex.old.raw
+./make_divindex_roman.pl divindex.old.raw > divindex.raw
+mv subdocgimme subdocgimme.old
+cp /var/lib/philologic/goodies/WOM_SCRIPTS/subdocgimme.translit ./subdocgimme
+
+Rather than outline the necessary modifications to search3t, we've included the modified script which you can "diff" against the default search3t included in the distribution.
+
+For additional documentation, check out the PhiloLogic WIKI:
+
+http://philologic/wiki/index.php/Main_Page
+http://philologic/wiki/index.php/EquivalencySearching

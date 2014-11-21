@@ -1,0 +1,192 @@
+	  <div class="toggle">
+	  <div class="toggleable">
+            <div id="info">
+	    <a name="infoname">Philologic Information and Help</a><br \><br \>
+	     Welcome to <a href="http://philologic.uchicago.edu">Philologic</a>. Here are some tips to make your search more productive:
+	     <ul>
+	     <li>For pattern matching one may employ wildcard characters (e.g., <i>widow*</i> retrieves widow, widowe, 
+widowhood, etc.).  
+             <li>To search without considering diacritics turn on "Caps Lock" and type in all uppercase (e.g., <i>NAIVETE</i> finds 
+both naivete and na&iuml;vet&eacute;).
+             <li>Selecting similar word search applies to all words in the database.
+	     </ul>
+            </div>
+          </div>
+          <div class="toggleable">
+	  <div id="resultformat">
+         <fieldset title="Refined Search Results">
+	    <a name="resultformat">Refined Search Results</a><br>
+              <!--<input checked="checked" name="OUTPUT" type="radio"
+              value="conc" id="conc" /> <label for="conc">Occurrences with Context (default)</label>
+              <input name="OUTPUT" type="radio" value="kwic" id="kwic"/>
+              <label for="kwic">Occurrences Line by Line [KWIC]</label><br>-->
+
+              <input type="radio" name="OUTPUT" id="OUTPUTTF" value="TF" />
+              <label for="OUTPUTTF">Frequency by Title</label> 
+
+	      <input type="radio" name="OUTPUT" id="OUTPUTTFR"
+              value="TFRATE" /> 
+	      <label for="OUTPUTTFR">Frequency by Title per 10,000</label><br />
+
+              <input name="OUTPUT" id="OUTPUTAF" type="radio" value="AF" />
+              <label for="OUTPUTAF">Frequency by Author</label> 
+
+	      <input type="radio" name="OUTPUT" id="OUTPUTAFR" value="AFRATE" /> 
+	      <label for="OUTPUTAFR">Frequency by Author per 10,000</label>
+
+              [<label for="AFTITLEDISP">Check </label>
+	      <input type="checkbox" name="AFTITLEDISP" id="AFTITLEDISP" value="OFF" /> to hide titles]<br />
+
+              <input name="OUTPUT" id="OUTPUTDF" type="radio" value="DF" />
+              <label for="OUTPUTDF">Frequency by Years</label> 
+
+	      <input type="radio" name="OUTPUT" id="OUTPUTDFR" value="DFRATE" /> 
+	      <label for="OUTPUTDFR">Frequency by Years per 10,000</label><br />
+              &nbsp; &nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <label for="DFPERIOD">Select Year
+              Group</label> <select name="DFPERIOD" id="DFPERIOD">
+                <option value="0" id="groupyear">
+                  Year
+                </option>
+
+                <option selected="selected" value="1" id="groupdecade">
+                  Decade
+                </option>
+
+                <option value="2" id="groupqcent">
+                  Quarter Cent.
+                </option>
+
+                <option value="3" id="grouphcent">
+                  Half Cent.
+                </option>
+
+                <option value="4" id="groupcent">
+                  Century
+                </option>
+              </select> <label for="DFTITLEDISP">[Check </label><input type="checkbox" name=
+              "DFTITLEDISP" id="DFTITLEDISP" value="OFF" /> to hide titles]<br />
+
+	      <input type="radio" name="OUTPUT" id="OUTPUTHEAD" value="freqbyhead" />
+              <label for="OUTPUTHEAD">Frequency by Div Object (Headword in Dictionaries)</label><br />
+
+              <input type="radio" name="OUTPUT" id="OUTPUTPF" value="PF" />
+              <label for="OUTPUTPF">Collocation Table</label> <label for="POLESPAN">Spanning</label> <select name="POLESPAN" id="POLESPAN">
+                <option>
+                  10
+                </option>
+
+                <option>
+                  9
+                </option>
+
+                <option>
+                  8
+                </option>
+
+                <option>
+                  7
+                </option>
+
+                <option>
+                  6
+                </option>
+
+                <option selected="selected">
+                  5
+                </option>
+
+                <option>
+                  4
+                </option>
+
+                <option>
+                  3
+                </option>
+
+                <option>
+                  2
+                </option>
+
+                <option>
+                  1
+                </option>
+              </select> words. <label for="POLEFILTER">Turn Filter Off:</label> <input type=
+              "checkbox" name="POLEFILTER" id="POLEFILTER" value="OFF" /> <a href="#">Filtered
+              Words</a><br />
+              <input type="radio" name="OUTPUT" id="OUTPUTTR" value="THMRHM" />
+              <label for="OUTPUTTR">Word in Clause Position (Theme-Rheme) Display</label>
+              <label for="THMPRTLIMIT">Options:</label> <select name="THMPRTLIMIT" id="THMPRTLIMIT">
+                <option value="1">
+                  Front of Clause Only
+                </option>
+
+                <option value="2">
+                  Front and Last Only
+                </option>
+
+                <option value="3">
+                  Front, Last, Middle
+                </option>
+
+                <option value="4">
+                  Full Report
+                </option>
+              </select><br />
+              <input type="radio" name="OUTPUT" id="OUTPUTSK" value=
+              "SORTEDKWIC" /> <label for="OUTPUTSK">Line by Line (KWIC) Sorted by keyword</label>
+              <label for="KWSS">and word to its</label> <select name="KWSS" id="KWSS">
+                <option value="1" selected="selected">
+                  Right
+                </option>
+
+                <option value="2">
+                  Left
+                </option>
+              </select> <label for="KWSSPRLIM">Display up to </label><select name="KWSSPRLIM" id="KWSSPRLIM">
+                <option value="500" selected="selected">
+                  500
+                </option>
+
+                <option value="1000">
+                  1000
+                </option>
+
+                <option value="2000">
+                  2000
+                </option>
+
+                <option value="5000">
+                  5000
+                </option>
+
+                <option value="10000">
+                  10000
+                </option>
+              </select> occurrences.<br />
+              
+	      <input TYPE="radio" NAME="OUTPUT" VALUE="TRSORT" id="TRSORT"><label for="TRSORT"> Sort by bibiliographic information</label>, <label for="trsortorder">order by:</label>  
+	      <select name="trsortorder" id="trsortorder" size="1">
+                <option value="author, title">
+                  Author, Title
+                </option>
+
+                <option value="author, date">
+                  Author, Year of Publication
+                </option>
+                <option value="title, author">
+                  Title, Author
+                </option>
+                <option value="date, author">
+                  Year of Publication, Author
+                </option>
+              </select>  
+	      <br />
+	      <br />
+              <!--Return to: <input name="OUTPUT" id="OUTPUTCONC" type="radio" value=
+              "conc" /> <label for="OUTPUTCONC">Occurrences with Context</label> or <input name=
+              "OUTPUT" id="OUTPUTKWIC" type="radio" value="kwic" /> <label for="OUTPUTKWIC">Occurrences
+              Line by Line</label>-->
+	    <script src="history.js"></script><br />
+            </fieldset>
+          </div>
+      </div>

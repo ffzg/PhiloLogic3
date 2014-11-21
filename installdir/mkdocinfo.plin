@@ -1,0 +1,36 @@
+# $Id: mkdocinfo.plin,v 2.1 2004/08/23 21:45:03 o Exp $
+# mkdocinfo ../bibliography tomsinfo
+# filename filesize shortcite and two ints in the file tomsinfo.
+# tomsinfo 0 1140
+# DIALREL.TEI 244219 uniqid 0 1140
+
+if ( $#ARGV != 1 )
+  {
+     print STDERR "mkdocinfo: Bad arguments!\n";
+     exit 1;
+  }
+
+$biblio = shift @ARGV;
+$tomsinfo = shift @ARGV; 
+
+open (BIBLIO, "$biblio"); 
+open (TOMS, $tomsinfo); 
+
+$offset = 0;
+
+while (<BIBLIO>) {
+        chop;
+        $inline = $_;
+        @results = split(/\t/, $inline);
+        $numfields = $#results;
+        $philodocid = $results[$numfields];
+        $filesize = $results[$numfields - 1];
+        $filename = $results[$numfields - 2];
+        $shortcite = $results[$numfields - 3];
+        $tomsinfo = <TOMS>; 
+        ($num, $len) = split (" ", $tomsinfo); 
+	print $filename . " " . $filesize . " ";	
+        print $shortcite . " " . $offset . " " . $len . "\n";
+        $offset += $len; 
+}
+

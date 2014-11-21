@@ -1,0 +1,495 @@
+#! /usr/bin/perl -T
+# A little function to read and delete and edit entries in search  
+# history files.  The search history files are updated by search2t
+# if the user so specifies and the database admin permits it.  
+#
+# MVO Test draft, Aug 03, 2004.  Updated Oct 2004.
+#
+# Configuration.  If you were going to use only one database, you
+# could set this up in philo-db.cfg.  I've finally decided to make
+# a more global application, tracking query histories for all 
+# PhiloLogic databases with search forms being served from a single 
+# machine.  The search forms must have the javascript to store 
+# a cookie with a random number which serves as the history file
+# name (philohistory.js).
+
+$PHILOSITECFG = "@sysconfdir@/philologic";
+
+do "$PHILOSITECFG/dbnames";
+# no dbname config here because we don't have a dbname yet
+do "$PHILOSITECFG/philologic.cfg";
+
+$SYSTEM_DIR=$dbnames{"$thedbname"};
+$filetest = $SYSTEM_DIR . "/lib/philosubs.pl";
+if (! -e $filetest) {
+		&PrintDefaultHeader;
+		print "<p>\n<p>\nInternal Error: Cannot find function library for $thedbname. Contact the Database Administrator.";
+	&PrintDefaultFooter;
+		exit (0);
+		}       
+$filetest = "";
+unshift (@INC, $SYSTEM_DIR . "/lib");
+require "philosubs.pl";
+
+$ENV{PATH} = "/bin:/usr/bin/";                     # Set a path to untaint
+$historyserver = "$PHILOCGI/philohistory.pl";
+$searchserver = $PHILOSEARCH3T . "?";
+@argstoprint = ("dbname", "word", "date", "author", "title", "genre",
+               "keywords", "multiw", "pubplace", "OUTPUT", "CONJUNCT",
+	       "SIMWORD");
+$HISTORYDIR = "$PHILOTMP/philohistory/";
+
+# End Configuation.
+
+# Get the QUERY_STRING, parse it and evaluate it....
+$QS = $ENV{'QUERY_STRING'};
+@argbuffer = split ("&", $QS);
+@argbuffer = grep (/^[a-zA-Z_0-9]*=.+$/, @argbuffer);
+foreach $arg (@argbuffer) {
+       $arg =~ m/^([A-Za-z_]*\=[A-Za-z0-9:\.\/\%]*)/;
+       $arg = $1;
+       $arg = '$' . $arg;
+       $arg =~ s/%../pack("H2", substr($&,1))/ge;
+       $arg =~ s/^(.[^=]*=)(.*$)/$1'$2'/;
+       eval $arg;
+       if ($SD) {
+       		$SELECTDELETE = 1;
+		push (@listtodelete, $SD);  # Make a list of records to delete
+		}
+	$SD = "";
+}
+$HISTORYFILE =~ m/^([0-9]*)$/;
+$theid = $1;
+$historyfile = $HISTORYDIR . $theid;
+
+# Print the default header, unless we are editing a query for
+# another search, in which case we want to use the database specific
+# header and footer.
+if (!$QUERYEDIT) {
+	&PrintDefaultHeader;
+	}
+
+# Here we are going to try to catch the WWW form as referer.  If we
+# don't have one set below as the hidden value REFER_QS we will get
+# it from the environment.  We want to keep the search form as the
+# referer even if this script is executed to delete entries.
+if (!$REFER_QS) {
+	$referer = $ENV{'HTTP_REFERER'};
+	}
+else {
+	$referer = $REFER_QS;
+}
+
+# ====================== Delete the History File ======================
+# I should check to see if it exists, but this will work normally
+# =====================================================================
+if ($DELETEALL) {
+	system ("rm -f $historyfile");
+
+WHOAOAOAOAAO!!!!
+#### FIX THIS PART HERERE.... we stopped wroking on this part....
+
+	#print sprintf($philomessage[243] . "\n";
+	&PrintDefaultFooter;
+	exit (0);
+	}
+
+# ===================== Open the History File ========================
+# If you can't find the history file, bail.  
+# =====================================================================
+if (!open (HISTORY, $historyfile)) {
+	if (!$printedheader) {
+		&PrintDefaultHeader;
+		}
+        print "<p>" . $philomessage[241] . "<p>";
+	&PrintDefaultFooter;
+	exit (0);
+	}
+
+# ================ Edit one history entry for search  =================
+# The user has selected to edit a query from the history list.  This
+# is identified by the entry number and history file.  We get the entry
+# and also get the database specific function library to get the header
+# and footer for each.  
+# =====================================================================
+if ($QUERYEDIT) {
+	$count = 0;
+        while ($linein = <HISTORY>) {
+		$count++;
+		if ($count == $QUERYEDIT) {
+			$querytoedit = $linein;
+			}
+		last if $querytoedit;
+		}
+	close (HISTORY);
+	if (!$querytoedit) {           # Bail if you can't get the entry
+		&PrintDefaultHeader;
+		print "<p>" . sprintf($philomessage[242], $QUERYEDIT);
+		&PrintDefaultFooter;
+		exit (0);
+		}
+	else {
+		$outline = &generateform($querytoedit);
+# these are now done at top -- OBM 2004-10-29
+#		do "$PHILOSITECFG/dbnames";
+#		do "$PHILOSITECFG/philologic.cfg";
+		print &mkTitle;
+		print "<p>" . $philomessage[245] . "<p>";
+		print $outline;
+		print &kwicfooter;
+		}
+	exit (0);
+}
+
+# ===================== Delete Selected History Entries ===============
+# Let's selectively delete some entries.  We're going to count
+# up the list, save the items undeleted to a buffer, erase the
+# history file, and print it out again, and then flow to the display.
+# The history file is open (see above), so remember to close it
+# to delete it after reading.
+if ($SELECTDELETE) {
+	$count = 0;
+	while ($linein = <HISTORY>) {
+		$count++;
+		$deletethisone = 0;
+		foreach $item2delete (@listtodelete) {
+			if ($count == $item2delete) {
+				$deletethisone = 1;
+				}
+			}
+		if (!$deletethisone) {
+			$historybuffer .= $linein;
+			}
+		}
+	close (HISTORY);
+	system ("/bin/rm -f $historyfile");
+	open (HISTORY, ">" . $historyfile);
+	print HISTORY $historybuffer;
+	close (HISTORY);                 # I may not need these but 
+	open (HISTORY, $historyfile);    # why not, just to be sure.
+}
+# And then we will print out what we did using the standard display
+# function, so.....
+# ===================== Display All History Entries ===============
+# This is the display function with a form.  The form will allow you
+# to delete all, selectively or run a search.  
+
+print "<p>";
+print "<form action=\"" . $historyserver . "\">\n";
+print "<input type=\"hidden\" name=\"HISTORYFILE\" value=\"";
+print $theid . "\">";
+print "<p>" . sprintf($philomessage[246], $historyserver, $HISTORYFILE, $referer) . "<p>";
+
+# Print out each stored search as a table row.
+print "<table border>\n";
+print "<tr><td align=left>&nbsp;</td>\n";
+print "<td align=center>" . $philomessage[247] . "</td>\n";
+print "<td align=center>" . $philomessage[248] . "</td>\n";
+print "<td align=center>" . $philomessage[249] . "</td>\n";
+print "<td align=center>" . $philomessage[250] . "</td></tr>\n";
+$count = 0;
+while ($lin = <HISTORY>) {
+   $count++;
+   $lin =~ s/\n//;
+   ($date, $linein) = split(/\t/, $lin);
+   print "<tr><td align=right>";
+   print $count . ". </td>";
+   print "<td align=center>";
+   print '<input type="checkbox" name="SD" value="' . $count .'">';
+   print "</td>\n";
+   $thesearchargs = &getargs($linein);
+   print "<td align=left>\n";
+   $date =~ s/^[A-Z][a-z]* //;
+   $date =~ s/:[0-9]+ / /;
+   print $date . "</td>\n";
+   print "<td align=left>" . $thesearchargs . "</td>\n";
+   $linein =~ s/&KEEPHISTORY=[0-9]*//;
+   $linein =~ s/^KEEPHISTORY=[0-9]*//;
+   $thissearch = "<a href=\"" . $searchserver . $linein . "\">";
+   $thissearch .= $philomessage[251] . "</a> <br>";
+   $thissearch .= "<a href=\"" . $historyserver . "?QUERYEDIT=";
+   $thissearch .= $count . "&HISTORYFILE=" . $theid . "\">" . $philomessage[252] . "</a>";
+   print "<td align=left>";
+   print $thissearch;
+   print "</td></tr>\n";
+   }
+print "</table>\n";
+print '<input type="hidden" name="REFER_QS" value="';
+print $referer . '">';
+print "\n</FORM>\n";
+&PrintDefaultFooter;
+exit (0);
+# And that should be the end.  
+
+# ======================================================================
+# ============================== SUBROUTINES ===========================
+# ======================================================================
+
+# ----------------------------------------------------------------------
+# getargs: parses the query_string for each stored search and returns the
+#          values for arguments selected in @argstoprint set above.  
+# ----------------------------------------------------------------------
+sub getargs() {
+	local ($theqs, $rtn, $larg, $largbuffer, $i, $x, $y);
+	$theqs = $_[0];
+	@largbuffer = split ("&", $theqs);
+	@largbuffer = grep (/^[a-zA-Z_0-9]*=.+$/, @largbuffer);
+	foreach $larg (@largbuffer) {
+	         $larg =~ s/%../pack("H2", substr($&,1))/ge;
+	         $larg =~ s/^(.[^=]*=)(.*$)/$1'$2'/;
+		 }
+	foreach $i (@argstoprint) {
+	        foreach $larg (@largbuffer) {
+		        ($x, $y) = split(/=/,$larg);
+			if ($i eq $x) {	
+				$rtn .= $larg . " ";
+			}
+		}
+	}
+# Change some strings for display.
+	$rtn =~ s/dbname=/Database=/gi;
+	$rtn =~ s/SIMWORD='ON'/Similarity=On/gi;
+	$rtn =~ s/word=/Terms=/gi;
+	$rtn =~ s/OUTPUT=/Format=/gi;
+	$rtn =~ s/Format='conc'/Format='Context'/gi;
+	$rtn =~ s/Format='AF'/Format='AuthFreq'/gi;
+	$rtn =~ s/Format='TF'/Format='TitleFreq'/gi;
+	$rtn =~ s/Format='DF'/Format='YearFreq'/gi;
+	$rtn =~ s/Format='PF'/Format='Collocation'/gi;
+	$rtn =~ s/Format='AFRATE'/Format='AuthFreqRate'/gi;
+	$rtn =~ s/Format='TFRATE'/Format='TitleFreqRate'/gi;
+	$rtn =~ s/Format='DFRATE'/Format='YearFreqRate'/gi;
+	$rtn =~ s/Format='THMRHM'/Format='Clause'/gi;
+	$rtn =~ s/CONJUNCT='PHRASE'/CONJUNCT='WordPhrase'/gi;
+	$rtn =~ s/CONJUNCT='6'/CONJUNCT='ProxSent'/gi;
+	$rtn =~ s/CONJUNCT='5'/CONJUNCT='ProxParag'/gi;
+	$rtn =~ s/CONJUNCT='PROXY'/CONJUNCT='PhraseSep'/gi;
+	$rtn =~ s/CONJUNCT=/Search\&nbsp;Opt.=/gi;
+return $rtn;
+}
+	
+# ----------------------------------------------------------------------
+# generateform: this generates a search form from the query
+#               string with selected values inserted.  Some modification of
+#               this may be required if we change parameters in future 
+#               releases.
+# ----------------------------------------------------------------------
+sub generateform() {
+	local ($query, $rtn, $largbuffer, $i, $x, $y);
+	$query = $_[0];
+	$query =~ s/^[^\t]*\t//;
+	$query =~ s/\n//g;
+	@largbuffer = split ("&", $query);
+	@largbuffercopy = @largbuffer;
+	foreach $larg (@largbuffer) {
+	        $larg =~ s/%../pack("H2", substr($&,1))/ge;
+		}
+		                                    # Ignore these for the
+						    # moment, since you will
+						    # get them later.
+	@largbuffer = grep !/OUTPUT/, @largbuffer;
+	@largbuffer = grep !/DFPERIOD/, @largbuffer;
+	@largbuffer = grep !/DFTITLEDISP/, @largbuffer;
+	@largbuffer = grep !/POLE/, @largbuffer;
+	@largbuffer = grep !/CONJUNCT/, @largbuffer;
+	@largbuffer = grep !/DISTANCE/, @largbuffer;
+	@largbuffer = grep !/PROXY/, @largbuffer;
+	@largbuffer = grep !/POLE/, @largbuffer;
+	@largbuffer = grep !/KEEPHISTORY/, @largbuffer;
+	@largbuffer = grep !/SIMWORD/, @largbuffer;
+	@largbuffer = grep !/THMPRTLIMIT/, @largbuffer;
+	@largbuffer = grep !/sortorder/, @largbuffer;
+	$rtn = "<form action=" . $searchserver . ">\n";
+	$rtn .= "<input type=\"submit\" value=\"SEARCH\"> or ";
+	$rtn .= "<input type=\"reset\" value=\"RESET\"><p>\n";
+	$rtn .= "<input type=\"hidden\" name=\"KEEPHISTORY\" value=\"";
+	$rtn .= $theid . "\">\n";
+	$rtn .= "<table>\n";
+	foreach $larg (@largbuffer) {
+		$rtn .= "<tr><td>\n";
+		($x, $y) = split(/=/, $larg);
+		if ($x eq "dbname") {
+			$rtn .= "<input type=\"hidden\" name=\"dbname\" ";
+			$rtn .= "value=\"" . $y . "\">\n";
+			$thedbname = $y;
+			}
+		else {
+		    $x1 = $x;
+		    $x1 =~ s/([a-z])/\u$1/;
+		    $rtn .= $x1 . "</td><td>" . "<input name=\"" . $x . "\" ";
+		    $rtn .= "size=\"30\"";
+		      if ($y) {
+		        $y =~ s/\+/ /g;
+			$rtn .= " value=\"" . $y . "\"";
+			}
+		     $rtn .= ">\n";
+		}
+		if ($x eq "word") {
+		  $rtn .= " <input type=\"checkbox\" name=\"SIMWORD\" ";
+		  $rtn .= " value=\"ON\"> " . $philomessage[253];
+		  }
+		$rtn .= "</td></tr>";
+	}
+	$rtn .= "</table>\n";
+	$rtn .= &SearchResultOptions;
+	$rtn .= "</form>\n";
+
+return $rtn;
+}
+# ----------------------------------------------------------------------
+# SearchResultOptions: generate the Search Options part of the search
+#                      form to edit and set the various selections.
+#                      I did not bother with trying to handle selects.
+#                      This is taken from the search form as we have it.
+#  ----------------------------------------------------------------------
+sub SearchResultOptions {
+local ($rtn, $larg, $x, $y, $tfm);
+                                              # Assemble the options
+					      # as a string.
+$tfm = "<b>" . $philomessage[137] . "</b>:<br>
+       &nbsp;&nbsp;&nbsp;&nbsp;
+       <input name=\"CONJUNCT\" type=\"radio\" value=\"PHRASE\">" .
+       $philomessage[138] .
+       "<input name=\"CONJUNCT\" type=\"radio\" value=\"PROXY\">" .
+        $philomessage[139] .
+       "<input name=\"DISTANCE\" size=\"2\" value=\"2\"> words
+       <select name=\"PROXY\">
+            <option selected>or fewer</option>
+            <option>exactly</option>
+       </select><br>
+       &nbsp;&nbsp;&nbsp;&nbsp;
+       <input name=\"CONJUNCT\" type=\"radio\" value=\"6\">" .
+        $philomessage[140] . 
+        "<input name=\"CONJUNCT\" type=\"radio\" value=\"5\">" . 
+        $philomessage[141];
+
+$tfm .= "<br><b>" . $philomessage[142] . ":</b></a><br>
+        <input name=\"OUTPUT\" type=\"radio\" value=\"conc\">" . 
+         $philomessage[143] . "&nbsp;&nbsp;
+        <input name=\"OUTPUT\" type=\"radio\" value=\"kwic\">" . 
+		$philomessage[144];
+
+$tfm .= "<br> &nbsp;
+     <input TYPE=\"radio\" NAME=\"OUTPUT\" VALUE=\"TF\">" .
+     $philomessage[145] . " &nbsp;&nbsp;
+     <input TYPE=\"radio\" NAME=\"OUTPUT\" VALUE=\"TFRATE\">" .
+     $philomessage[146] . 
+     "<br>&nbsp;
+     <input name=\"OUTPUT\" type=\"radio\" value=\"AF\">" . 
+     $philomessage[147] . 
+     "<input type=\"radio\" name=\"OUTPUT\" value=\"AFRATE\">" .
+     $philomessage[148] .      
+     "[" . sprintf($philomessage[149], "<input TYPE=\"checkbox\" NAME=\"AFTITLEDISP\" VALUE=\"OFF\">") . "] <br> &nbsp;
+     <input name=\"OUTPUT\" type=\"radio\" value=\"DF\">" . 
+     $philomessage[150] . " &nbsp;
+     <input type=\"radio\" name=\"OUTPUT\" value=\"DFRATE\">" .
+     $philomessage[151] . "<br>
+     &nbsp; &nbsp; &nbsp; ". $philomessage[152] . "  <select name=\"DFPERIOD\">
+               <option value=\"0\">" . $philomessage[153] . "</option>
+               <option selected value=\"1\">" . $philomessage[154] . "</option>
+               <option value=\"2\">" . $philomessage[155] . "</option>
+               <option value=\"3\">" . $philomessage[156] . "</option>
+               <option value=\"4\">" . $philomessage[157] . "</option>
+               </select>
+     &nbsp;[" . sprintf($philomessage[158], "<input TYPE=\"checkbox\" NAME=\"DFTITLEDISP\" VALUE=\"OFF\">") . "]";
+
+$tfm .= "<br>
+     &nbsp;<input TYPE=\"radio\" NAME=\"OUTPUT\" VALUE=\"PF\">" .
+     sprintf($philomessage[159], 
+     "<select name=POLESPAN>
+     <option>10
+     <option>9
+     <option>8
+     <option>7
+     <option>6
+     <option selected>5
+     <option>4
+     <option>3
+     <option>2
+     <option>1</option></select> ") . "."
+     $philomessage[160] . ": 
+     <input TYPE=\"checkbox\" NAME=\"POLEFILTER\" VALUE=\"OFF\">
+     <br>
+     &nbsp;<input type=\"radio\" name=\"OUTPUT\" value=\"THMRHM\">" .
+     $philomessage[161] . 
+     "&nbsp; " . $philomessage[166] . ":
+     <select name=\"THMPRTLIMIT\">
+               <option value=\"1\">" . $philomessage[162] . "</option>
+               <option value=\"2\">" . $philomessage[163] . " </option>
+               <option value=\"3\">" . $philomessage[164] . "</option>
+               <option value=\"4\">" . $philomessage[165] . "</option>
+               </select>";
+
+# Options we are interested in handling at this time.
+@outoptions = ("OUTPUT", "CONJUNCT", "DISTANCE", "AFTITLEDISP",
+               "DFTITLEDISP", "POLEFILTER", "SIMWORD");
+# Parse the original query string.
+@largbuffercopy = grep (/^[a-zA-Z_0-9]*=.+$/, @largbuffercopy);
+
+# Cycle thru the Options list and set checked selection where
+# you have a value.
+foreach $thisarg (@outoptions) {
+	@nx = grep (/$thisarg/i, @largbuffercopy);
+        $xx = @nx[0];
+	if ($xx) {
+	   ($a, $b) = split(/=/,$xx);
+	   @tempform = split(/\n/, $tfm);
+	   $tfm = "";
+	   foreach $x (@tempform) {
+		if ($x =~ /TYPE="radio"/i) {
+			if ($x =~ /$a/i && $x =~ /$b/i) {
+				$x =~ s/>/ checked>/;
+		        	}	
+		}
+		if ($x =~ /TYPE="checkbox"/i) {
+			if ($x =~ /$a/i && $x =~ /$b/i) {
+				$x =~ s/>/ checked>/;
+		        	}	
+		}
+	        $tfm .= $x ."\n";	
+		}
+	   }
+        }
+
+$rtn = $tfm;
+return ($rtn);
+}
+# ----------------------------------------------------------------------
+# PrintDefaultHeader: print the header with a few little goodies for 
+#                     display.  Keep this simple.
+#  ----------------------------------------------------------------------
+sub PrintDefaultHeader {
+print "Content-type: text/html; charset=UTF-8\n\n";
+print "<html>\n<head>\n";
+print "<style type=\"text/css\">
+     BODY { FONT-FAMILY: arial, helvetica, sans-serif; FONT-SIZE: 14px;
+            LINE-HEIGHT: 1.2; margin-left: 20px; margin-right: 20px; }
+     td  {FONT-SIZE: 14px;}
+     span.bigbold {FONT-SIZE: 16px; font-weight: bolder;}
+     </style>\n";
+print "</head>";
+print "<body BGCOLOR=\"ffffff\" TEXT=\"000000\" LINK=\"800000\" 
+      VLINK=\"#800000\" ALINK=\"#800000\">\n";
+
+print "&nbsp;<br><span class=bigbold><center>" . $philomessage[167] . "</center></span><p><hr>\n";
+$printedheader = 1;
+}
+
+# ----------------------------------------------------------------------
+# PrintDefaultFooter: print the footer with a few little goodies for 
+#                     display.  Note that it prints a return to search
+#                     form link.  This should work but it may get confused
+#                     if there are alot of edits, etc.
+#  ----------------------------------------------------------------------
+sub PrintDefaultFooter {
+	print "<hr>";
+    print sprintf($philomessage[168], "<a href=\"" . $referer . "\">") . "</a><br>\n";
+	print "<center> 
+	      <a href=\"http://philologic.uchicago.edu/powered\">
+	      <img border=\"0\" 
+	      src=\"http://philologic.uchicago.edu/philopowered.png\" 
+	      alt=\"" . $philomessage[169] . "\"></a>";
+
+}	
+
+ 

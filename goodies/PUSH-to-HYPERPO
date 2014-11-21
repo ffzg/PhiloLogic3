@@ -1,0 +1,107 @@
+
+This is an example of one way to perform interprocess
+communications from PhiloLogic to another function.  The
+idea is that you may use PhiloLogic as a general search
+tool, but want to also provide links to further analytical
+systems.  In this way, Philo could be a general document
+search/delivery system, and provide links to further tools.
+
+This documents two ways to connect PhiloLogic functions to
+HyperPo:  http://huco.ualberta.ca/HyperPo/
+
+The first is to push a PART that under getobject.  This would
+appear in the bibliographic citation of the object retrieved. It
+only needs this modification to philosubs.ph, our database specific
+function library.
+# ----------------------------------------------------------------------
+# objectheader: Reads the result header and gets the bibliography
+#               for the document.  Objects are called for only 1 document.
+# Called from:
+# ----------------------------------------------------------------------
+sub objectheader {
+	local ($txt, $qs, $test);
+	$txt = &readnavbar;
+	$txt .=  &getbiblioLine ($doc,"link") . "\n";
+	$txt .= "<span class=mwright>";
+	$test = '[<a href="http://tapor.ualberta.ca/Tools/Dispatch/?tool=HyperPo';
+	$test .= '&delta_iLang=en&url=';
+	# You need the full URL since this is going as an argument.
+	$qs = "http://thyme.uchicago.edu/cgi-bin/xphilo/getobject_?";
+	$qs .= $ENV{'QUERY_STRING'};
+	$test .= $qs;
+	$test .= '" target=_blank>Analyze Part with HyperPo</a>]</span>';
+	$txt .= $test;
+	$txt .= "<hr noshade>\n";
+	return "$txt";
+}
+
+To push an entire document to HyperPo, get the table of contents.  Modify
+the NavigBiblio.  Now, if the file is in WWW space, the following could
+simply point to it.  But to get the link from inside of PhiloLogic, 
+use the following:
+
+# ----------------------------------------------------------------------
+#  NavigBiblio: generate the bibliography for document navigation/TOC.
+#  Called from: the cgi-bin function navigate
+# ----------------------------------------------------------------------
+sub NavigBiblio {
+        local ($doc, $rtn, $test, $txt);
+        $doc = $_[0];
+        $rtn = "<span class=navhead>Table of Contents</span><p>\n";
+        $rtn .= "<span class=navbiblio>";
+        $rtn .= &getbiblioLine($doc);
+        $rtn .= "</span>\n";
+        $txt = "<span class=mwright>";
+        $test = '[<a href="http://tapor.ualberta.ca/Tools/Dispatch/?tool=HyperPo';
+        $test .= '&delta_iLang=en&url=';
+        # You need the full URL since this is going as an argument.
+        $test .= "http://thyme.uchicago.edu/cgi-bin/xphilo/getrawdoc.pl?";
+        $test .= $SYSTEM_DIR . "." . $doc;
+        $test .= '" target=_blank>Analyze Document with HyperPo</a>]</span>';
+        $txt .= $test;
+        $rtn .= $txt;
+        $rtn .= "<p>\n";
+return $rtn;
+}
+
+Note that this requires a little cgi-bin function called getrawdoc.pl.
+We will not put this in the standard release package (I don't think),
+so install the following:
+
+-----------------------START getrawdoc.pl-------------------------------
+#! /usr/bin/perl
+# This is just a mechanism to send a completely raw document to
+# a calling process.  I'm not giving out a file name since I want
+# to check to see if the file is in the docinfo and exists in the
+# TEXTS directory as a security precaution.
+$QS = $ENV{'QUERY_STRING'};
+($SYSTEM_DIR, $doc) = split ('\.', $QS);
+$i = $doc + 1;
+open (DOCINFO, $SYSTEM_DIR . "docinfo");
+   while ( $i-- ) {
+        $c = <DOCINFO>;
+    }
+close (DOCINFO);
+$filename = (split (" ", $c))[0];
+if (!$filename) {
+        print "Content-type: text/html; charset=UTF-8\n\n";
+        print "ERROR: No File";
+        exit;
+        }
+$pathfile = $SYSTEM_DIR . "TEXTS/" . $filename;
+if (open (RAWFILE, $pathfile)) {
+        print "Content-type: text/html; charset=UTF-8\n\n";
+        while (<RAWFILE>) {
+                print;
+        }
+} 
+else {
+        print "Content-type: text/html; charset=UTF-8\n\n";
+        print "ERROR: No File";
+}       
+--------------------END getrawdoc.pl------------------------------------
+
+Note that I am setting a standard Content Type.  This could be
+conditionalized by checking the kind of document you have, etc.  
+
+

@@ -1,0 +1,495 @@
+#!@PERL@ # might not be needed or might be doubled...
+# $Id: makeforms_gold.pl.plin 2005/08/23 21:07:26 o Exp $
+# philologic 3.0 -- TEI XML/SGML Full-text database engine
+# Copyright (C) 2005 University of Chicago
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the Affero General Public License as published by
+# Affero, Inc.; either version 1 of the License, or (at your option)
+# any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# Affero General Public License for more details.
+#
+# You should have received a copy of the Affero General Public License
+# along with this program; if not, write to Affero, Inc.,
+# 510 Third Street, Suite 225, San Francisco, CA 94107 USA.
+# ==============================================================
+# This script create the default Philologic search forms for an install
+# based on what fields are in use in the database load files.
+# Doesn't require SQL -- just uses the SQL files that are generated.
+
+%columnFormats = ("philodocid" => 0, "dgphilodocid" => 0, "dgphilodivid" => 0, "dgphilosubdivid" => 0, "author" =>0, "title" => 0, "date" => 0);
+
+# Get the SYSTEM_DIR from the environment and read format.ph.  This 
+# includes the connection arguments, field list, and field type to
+# form the query.  to get some required variables and subroutines. 
+
+# EDIT HERE: if these are not set correctly, you must change these values
+
+$SYSTEM_DIR = "...IMAGE...";
+$DBNAME = "...DBNAME...";
+
+unshift (@INC, $SYSTEM_DIR . "lib");
+require "philosubs.pl";
+$formaction = $PHILOCGI . "/search3t";
+
+# Since we have all the configuration info from philosubs.pl and
+# philo-db.cfg (required in philosubs.pl), we can simply start here.
+
+open (BIBSQL, "$SYSTEM_DIR/load.database.sql");
+
+$start = 0;
+$bibindex = 0;
+
+while ($line = <BIBSQL>) {
+    if ($line =~ /create table/) {
+	$start = 1;
+    } elsif ($start) {
+	if ($line =~ /load data/) {
+	    $start = 0;
+	} elsif ($line =~ /^(\w+)/) {
+	    $bibfields[$bibindex] = $1;
+	    $bibindex++;
+	}
+    }
+}
+
+close BIBSQL;
+
+open (BIB, "$SYSTEM_DIR/bibliography");
+
+@bibhasvalues = @bibarray = @bibexamples = ();
+
+$bibindex = 0;
+while ($line = <BIB>) {
+    if (@bibline = split(/\t/, $line)) {
+	$colindex = 0;
+	foreach $col (@bibline) {
+	    $bibarray[$bibindex][$colindex] = $bibline[$colindex];
+	    if ($bibline[$colindex] ne "") {
+		$bibhasvalues[$colindex] = 1;
+	    }
+	    $colindex++;
+	}
+	$bibindex++;
+    }
+}
+
+$bibindex--;
+
+close BIB;
+
+$colindex = 0;
+
+foreach $col (@bibhasvalues) {
+    if ($col) {
+        if ($bibfields[$colindex] eq 'title') {
+            $titleindex = $colindex;
+        } elsif ($bibfields[$colindex] eq 'author') {
+            $authorindex = $colindex;
+        } elsif ($bibfields[$colindex] eq 'date') {
+            $dateindex = $colindex;
+        }
+
+        $bibexample = '';
+
+	$trialcounter = 0;
+
+# Try 100 times to get a random example
+
+	while ($bibexample eq '' && $trialcounter < 100) {
+            $trialcounter++;
+            $randomindex = rand $bibindex;
+            $bibexample = $bibarray[$randomindex][$colindex];
+        }
+
+        $bibexamples[$colindex] = $bibexample;
+    }   
+    $colindex++;
+}
+
+if (defined($titleindex)) {
+    $randomindex = rand $bibindex;
+    $titleexample = $bibarray[$randomindex][$titleindex];
+}
+
+if (defined($authorindex)) {
+    $randomindex = rand $bibindex;
+    $authorexample = $bibarray[$randomindex][$authorindex];
+}
+
+if (defined($dateindex)) {
+    $randomindex = rand $bibindex;
+    $dateexample = $bibarray[$randomindex][$dateindex];
+}
+
+open (DIVSQL, "$SYSTEM_DIR/load.subdoctables.sql");
+
+$startDiv = 0;
+$startSub = 0;
+$Aover = 0;
+@divfields = ();
+@subfields = ();
+$divindex = $subindex = 0;
+
+while ($line = <DIVSQL>) {
+    if ($line =~ /create table/) {
+	if ($Aover) {
+	    $startB = 1;
+	} else {
+	    $startA = 1;
+	}
+    } elsif ($startA) {
+	if ($line =~ /load data/) {
+	    $startA = 0;
+	    $Aover = 1;
+	} elsif ($line =~ /^(\w+)/) {
+	    $divfields[$divindex] = $1;
+	    $divindex++;
+	}
+    } elsif ($startB) {
+        if ($line =~ /load data/) {
+            $startB = 0;
+        } elsif ($line =~ /^(\w+)/) {
+            $subfields[$subindex] = $1;
+            $subindex++;
+        }
+    }
+}
+
+$divindex--;
+$subindex--;
+
+close DIVSQL;
+
+open (DIV, "$SYSTEM_DIR/divindex.raw");
+
+@divhasvalues = @divarray = @divexamples = ();
+
+$divindex = 0;
+while ($line = <DIV>) {
+    if (@divline = split(/\t/, $line)) {
+	$colindex = 0;
+	foreach $col (@divline) {
+	    $divarray[$divindex][$colindex] = $divline[$colindex];
+	    if ($divline[$colindex] ne "") {
+		$divhasvalues[$colindex] = 1;
+	    }
+	    $colindex++;
+	}
+	$divindex++;
+    }
+}
+
+$divindex--;
+
+close DIV;
+
+
+$colindex = 0;
+
+foreach $col (@divhasvalues) {
+    if ($col) {
+	$divexample = '';
+	while ($divexample eq '') {
+	    $randomindex = rand $divindex;
+	    $divexample = $divarray[$randomindex][$colindex];
+	}
+	$divexamples[$colindex] = $divexample;
+    }	
+    $colindex++;
+}
+
+open (SUB, "$SYSTEM_DIR/subdivindex.raw");
+
+@subhasvalues = @subarray = @subexamples = ();
+
+$subindex = 0;
+while ($line = <SUB>) {
+    if (@subline = split(/\t/, $line)) {
+	$colindex = 0;
+	foreach $col (@subline) {
+	    $subarray[$subindex][$colindex] = $subline[$colindex];
+	    if ($subline[$colindex] ne "") {
+		$subhasvalues[$colindex] = 1;
+	    }
+	    $colindex++;
+	}
+	$subindex++;
+    }
+}
+
+$subindex--;
+
+close SUB;
+
+
+$colindex = 0;
+
+foreach $col (@subhasvalues) {
+    if ($col) {
+	$subexample = '';
+	while ($subexample eq '') {
+	    $randomindex = rand $subindex;
+	    $subexample = $subarray[$randomindex][$colindex];
+	}
+	$subexamples[$colindex] = $subexample;
+    }	
+    $colindex++;
+}
+
+
+#exit();
+
+open (BIBFORM, ">$SYSTEM_DIR/lib/forms/bibliographic.form.html");
+open (WBBIBFORM, ">$SYSTEM_DIR/lib/forms/bibliographic.wb.form.html");
+
+print BIBFORM "<table><tr><td><b>&sect;Limit your search by the following fields:</b>";
+
+print WBBIBFORM '<div class="toggleable">
+            <div id="bibfields">
+        <fieldset title="Bibliographic">
+    <a name="bibfieldsname">Bibiliographic Search Fields</a>
+              <p>Find documents or limit word searches (use AND,
+              OR, and NOT).</p>';
+
+
+
+
+$bibtable = $TABLE;
+$bibindex = 0;
+foreach $bibfield (@bibfields) {
+    if ((! exists($columnFormats{$bibfield})) || $columnFormats{$bibfield}) {
+	if ($bibhasvalues[$bibindex]) {
+            print BIBFORM createTableRow("xx", $bibfields[$bibindex], $bibexamples[$bibindex]);
+	    print WBBIBFORM createWBInput("xx", $bibfields[$bibindex], $bibexamples[$bibindex]);
+	}
+    }
+    $bibindex++;
+}
+
+
+print BIBFORM "</table>";
+close BIBFORM;
+
+print WBBIBFORM '<br />One may also use the bibliographic
+              fields on their own to find documents and sort the
+              results.<br />
+              <label for="sortorder">Sort bibliographic searches only by:</label> <select name="sortorder" id="sortorder" size="1">
+                <option value="author, title">
+                  Author, Title
+                </option>
+
+                <option value="author, date">
+                  Author, Year of Publication
+                </option>
+                <option value="title, author">
+                  Title, Author
+                </option>
+                <option value="date, author">
+                  Year of Publication, Author
+                </option>
+              </select>     
+        </fieldset>
+
+      </div> 
+     </div>';
+
+close WBBIBFORM;
+
+open (DIVFORM, ">$SYSTEM_DIR/lib/forms/divs.form.html");
+open (WBDIVFORM, ">$SYSTEM_DIR/lib/forms/divs.wb.form.html");
+
+print DIVFORM "<table><tr><td><b>&sect;Div Objects:</b></td></tr>";
+print WBDIVFORM '<div class="toggleable">
+            <div id="textobjs">
+    <fieldset title="Text Objects">
+    <a name="textobjsname">Text Object Search Fields</a><br><br>
+              Find documents or limit word searches (use OR only).<br><br><b>Div Objects</b> <br>';
+
+
+
+$divtable = $TABLE . "dividx";
+$divindex = 0;
+foreach $divfield (@divfields) {
+    if ((! exists($columnFormats{$divfield})) || $columnFormats{$divfield} != 0) {
+	if ($divhasvalues[$divindex]) {
+            print DIVFORM createTableRow("yy", $divfields[$divindex], $divexamples[$divindex]);
+	    print WBDIVFORM createWBInput("yy", $divfields[$divindex], $divexamples[$divindex]);
+	}
+    }
+    $divindex++;
+}
+
+print DIVFORM "</table>";
+
+print WBDIVFORM '<br><b>SubDiv Objects:</b><br>';
+
+close DIVFORM;
+
+
+open (SUBDIVFORM, ">$SYSTEM_DIR/lib/forms/subdivs.form.html");
+
+
+print SUBDIVFORM "<table><tr><td><b>&sect;Subdiv Objects:</b></td></tr>";
+
+$subdivtable = $TABLE . "subdividx";
+$subindex = 0;
+foreach $subfield (@subfields) {
+    if ((! exists($columnFormats{$subfield})) || $columnFormats{$subfield} != 0) {
+	if ($subhasvalues[$subindex]) {
+            print SUBDIVFORM createTableRow("zz", $subfields[$subindex], $subexamples[$subindex]);
+            print WBDIVFORM createWBInput("zz", $subfields[$subindex], $subexamples[$subindex]);
+	}
+    }
+    $subindex++;
+}
+
+print SUBDIVFORM "</table>";
+close SUBDIVFORM;
+
+print WBDIVFORM '</fieldset>
+             </div>
+          </div>';
+
+close WBDIVFORM;
+
+$formfile = $DBNAME . ".form.html";
+$wbformfile = $DBNAME. ".whizbang.form.html";
+
+while (-e $PHILOWEBPATH . "/" . $formfile) {
+   $formfile = "new." . $formfile;
+}
+
+while (-e $PHILOWEBPATH . "/" . $wbformfile) {
+    $wbformfile = "new." . $wbformfile;
+}
+
+$formfile = $PHILOWEBPATH . "/" . $formfile;
+$wbformfile = $PHILOWEBPATH . "/" . $wbformfile;
+
+if ($wbformfile =~ /new\./) {
+        print "Found existing search form(s), adding new prefix.\n";
+        }
+print "Writing search forms to: \n\t$wbformfile\n\t$formfile\n";
+
+
+open (FORM, ">$formfile");
+open (HEAD, "$SYSTEM_DIR/lib/forms/head.form.html");
+
+while ($line = <HEAD>) {
+     $line =~ s/XXXDBNAMEXXX/$DBNAME/g;
+     $line =~ s/XXXFORMACTIONXXX/$formaction/g;
+     print FORM $line;
+}
+
+close FORM;
+
+close HEAD;
+
+$result = `cat $SYSTEM_DIR/lib/forms/basic.form.html >> $formfile`;
+$result = `cat $SYSTEM_DIR/lib/forms/bibliographic.form.html >> $formfile`;
+$result = `cat $SYSTEM_DIR/lib/forms/bibsort.form.html >> $formfile`;
+$result = `cat $SYSTEM_DIR/lib/forms/divs.form.html >> $formfile`;
+$result = `cat $SYSTEM_DIR/lib/forms/subdivs.form.html >> $formfile`;
+$result = `cat $SYSTEM_DIR/lib/forms/refined.form.html >> $formfile`;
+$result = `cat $SYSTEM_DIR/lib/forms/history.form.html >> $formfile`;
+$result = `cat $SYSTEM_DIR/lib/forms/foot.form.html >> $formfile`;
+
+
+open (WBFORM, ">$wbformfile");
+open (WBHEAD, "$SYSTEM_DIR/lib/forms/head.wb.form.html");
+
+while ($line = <WBHEAD>) {
+    $line =~ s/XXXDBNAMEXXX/$DBNAME/g;
+    $line =~ s/XXXFORMACTIONXXX/$formaction/g;
+    $line =~ s/XXXTITLEEXAMPLEXXX/$titleexample/;
+    $line =~ s/XXXAUTHOREXAMPLEXXX/$authorexample/;
+    $line =~ s/XXXDATEEXAMPLEXXX/$dateexample/;
+    print WBFORM $line;
+}
+
+close WBHEAD;
+close WBFORM;
+
+$result = `cat $SYSTEM_DIR/lib/forms/basic.wb.form.html >> $wbformfile`;
+$result = `cat $SYSTEM_DIR/lib/forms/bibliographic.wb.form.html >> $wbformfile`;
+$result = `cat $SYSTEM_DIR/lib/forms/divs.wb.form.html >> $wbformfile`;
+$result = `cat $SYSTEM_DIR/lib/forms/foot.wb.form.html >> $wbformfile`;
+
+
+if (! -e "$PHILOWEBPATH/whizbang.css") {
+        $result = `cp $SYSTEM_DIR/lib/forms/whizbang.css $PHILOWEBPATH/`;
+        }
+if (! -e "$PHILOWEBPATH/whizbang.js") {
+        $result = `cp $SYSTEM_DIR/lib/forms/whizbang.js $PHILOWEBPATH/`;
+        }
+if (! -e "$PHILOWEBPATH/history.js") {
+	open (NEWJS, ">$PHILOWEBPATH/history.js");
+	open (JS, "$SYSTEM_DIR/lib/forms/history.js");
+	while ($line = <JS>) {
+     		$line =~ s/XXXPHILOCGIXXX/$PHILOCGI/g;
+     		print NEWJS $line;
+	}
+	close NEWJS;
+	close JS;
+}
+
+sub checkForValues {
+
+    my $query = $_[0];
+
+   if ($sth = $dbh->prepare($query)) {
+           $sth->execute();
+           while (@results = $sth->fetchrow ) { 
+	       if ($results[0] > 0) {
+		   return 1;
+	       } else {
+		   return 0;
+	       }
+            }
+     }
+}
+
+
+#create a table row based on the field and the div type
+
+sub createTableRow {
+    my ($browsetype, $column, $example) = @_;
+
+    my $row = "";
+
+    $row .="<tr>";
+    $row.= '<td width=239 height="8"><b>' . prettifyColumnName($column) . '</b>';
+    $row .= "</td>";
+    $row .= '<td width=737 height="8"><input name=' . $column . ' size=35><input name=' . $browsetype . 'browse' . $column . ' type=submit value=Terms> (e.g., ' . $example . ') </td></tr>';
+
+    return $row;
+}
+
+#create a 'whizbang' input for the field
+
+sub createWBInput {
+    my ($browsetype, $column, $example) = @_;
+
+    my $row = "";
+
+    $row .= "<label for=\"$column\" class=\"textfield\">" . prettifyColumnName($column) . ":</label><input name=\"$column\" id=\"$column\" size=\"35\" /> <input name=\"" . $browsetype . "browse" . $column . "\" type=\"submit\" value=\"Terms\" /> <div class=\"example\">(e.g. '" . $example ."')</div><br/>\n";
+
+    return $row;
+
+}
+
+
+
+
+sub prettifyColumnName {
+    $cname = $_[0];
+    $cname =~ s/^dg//;
+    $cname =~ s/^(sub)?div//g;
+    return ucfirst($cname);
+}
+    

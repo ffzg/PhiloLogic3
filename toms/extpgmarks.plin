@@ -1,0 +1,15 @@
+# $Id: extpgmarks.plin,v 2.1 2004/08/23 21:45:03 o Exp $
+
+$inputfile = $ARGV[0];
+
+open (DOCFILE, "$inputfile");
+
+while (<DOCFILE>) {
+	if (/<pb /i) {
+		$templine = $_;
+		$templine =~ s/n="([^"]*)"//i;
+		$pagetag = $1;
+		print "$pagetag\n";
+		}
+	}
+ 

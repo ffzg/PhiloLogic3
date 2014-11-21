@@ -1,0 +1,59 @@
+#!@PERL@
+# $Id: crapser-egrep-2field.plin,v 2.1 2004/08/23 21:45:03 o Exp $
+# Modified to support the BUTNOT filter ... MVO Mar 1 2006.
+
+%ACCENTS = (
+   'A',    "(a|\xc3\xa0|\xc3\xa1|\xc3\xa2|\xc3\xa3|\xc3\xa4|\xc3\x82)",
+   'C',    "(c|\xc3\xa7|\xc3\x87)",
+   'E',    "(e|\xc3\xa8|\xc3\xa9|\xc3\xaa|\xc3\xab|\xc3\x89|\xc3\x88|\xc3\x8A)",
+   'I',    "(i|\xc3\xac|\xc3\xad|\xc3\xae|\xc3\xaf)",
+   'N',    "(n|\xc3\xb1)",
+   'O',    "(o|\xc3\xb2|\xc3\xb3|\xc3\xb4|\xc3\xb4|\xc3\xb6|\xc3\x94)",
+   'U',    "(u|\xc3\xb9|\xc3\xba|\xc3\xbb|\xc3\xbc)",  
+   'Y',    "(y|\xc3\xbf|xc3\xbd)" );
+
+
+$DOTPATTERN = "([a-zA-Z0-9]|[\xa0-\xc3][\xa0-\xc3])";
+
+while (<>) {
+	chop;
+	$prefix = /^\256\?/ ? "\256\?" : /^\256/ ? "\256" : "";
+	s/^\256\?*//;
+	s/(\([^\)]*)(\|)([^\)]*\))/$1#PIPE#$3/g;
+        $yeswords = "";
+        $butnotwords = "";
+	@patterns = split ('\|', $_);
+        foreach $pattern (@patterns) {
+                if ($pattern =~ /^\-/) {
+                    $pattern =~ s/^-//;
+                    $pattern =~ s/^(.*)$/^$prefix$1\t/;
+                    $butnotwords .= $pattern . "|";
+                    }
+                else {
+                    $pattern =~ s/^(.*)$/^$prefix$1\t/;
+                    $yeswords .= $pattern . "|";
+                    }
+           }
+
+        $yeswords =~ s/\|$//;
+        $yeswords =~ s/#PIPE#/\|/g;
+        $yeswords =~ s/[ACEINOUY]/$ACCENTS{$&}/ge;
+        $yeswords =~ s/(\.)([^\*])/$DOTPATTERN$2/g;
+        $yeswords =~ tr/A-Z/a-z/;
+
+        if ($butnotwords) {
+                $butnotwords =~ s/\|$//;
+                $butnotwords =~ s/#PIPE#/\|/g;
+                $butnotwords =~ s/[ACEINOUY]/$ACCENTS{$&}/ge;
+                $butnotwords =~ s/(\.)([^\*])/$DOTPATTERN$2/g;
+                $butnotwords =~ tr/A-Z/a-z/;
+        }
+
+if ($butnotwords) {
+   system ("@EGREP@ -i -e \"$yeswords\" < " . $ENV{SYSTEM_DIR} . "words.R.wom" . " | @EGREP@ -i -v -e \"$butnotwords\" | @GAWK@ -F\"\t\" ' {print \$2}' "); 
+}
+else { 
+   system ("@EGREP@ -i -e \"$yeswords\" < " . $ENV{SYSTEM_DIR} . "words.R.wom" . " | @GAWK@ -F\"\t\" '{print \$2}' ");
+   }
+}
+

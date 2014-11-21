@@ -1,0 +1,410 @@
+#!@PERL@ 
+# =============================================================
+# XML::Twig based TEI XML metadata extractor
+
+use XML::Twig;
+
+
+my $directory = $ARGV[0];
+my $file_list = $ARGV[1];
+chomp($directory);
+chomp($file_list);
+
+$debug = 0;
+$documentcounter = 0;
+@xmlfiles = ();
+@thebibliolist = ();
+@sortlist = ();
+
+@xptitles =  (
+	      '//teiHeader/fileDesc/titleStmt/title[@type="subordinate"]',
+	      "//teiHeader/fileDesc/titleStmt/title",
+	      "//teiHeader/fileDesc/sourceDesc/bibl/titleStmt/title",
+	      "//teiHeader/fileDesc/sourceDesc/biblfull/titleStmt/title",
+	      "//mepHeader/docTitle/titlePart/supplied",
+	      "//mepHeader/docTitle/titlePart"
+	      );
+
+@xpauthors = (
+	      "//teiHeader/fileDesc/titleStmt/author/name",
+	      "//teiHeader/fileDesc/sourceDesc/biblfull/titleStmt/respStmt/name",
+	      "//teiHeader/fileDesc/sourceDesc/biblfull/titleStmt/author",
+	      "//teiHeader/fileDesc/sourceDesc/bibl/titleStmt/author",
+	      "//teiHeader/fileDesc/titleStmt/author",
+	      "//mepHeader/docAuthor",
+	      "//mepHeader/sender"
+                  );
+
+@xpauthordates = (
+		  "//teiHeader/fileDesc/titleStmt/author/date",
+		  );
+
+@xppublishers = (
+		 "//teiHeader/fileDesc/sourceDesc/biblfull/publicationStmt/publisher",
+		 "//teiHeader/fileDesc/sourceDesc/bibl/imprint/publisher",
+		 "//teiHeader/fileDesc/sourceDesc/bibl/publicationStmt/publisher",
+		 "//teiHeader/fileDesc/sourceDesc/bibl/publisher",
+		 "//teiHeader/fileDesc/publicationStmt/publisher",
+		 "//mepHeader/sourceDesc/bibl",
+		 );
+
+@xppubplaces = (
+		"//teiHeader/fileDesc/sourceDesc/biblFull/publicationStmt/pubPlace",
+		"//teiHeader/fileDesc/sourceDesc/bibl/imprint/pubPlace",
+		"//teiHeader/fileDesc/sourceDesc/bibl/pubPlace",
+		"//teiHeader/fileDesc/sourceDesc/bibl/publicationStmt/pubPlace"
+		);
+
+@xppubdates = (
+	       "//teiHeader/fileDesc/sourceDesc/biblFull/publicationStmt/date",
+	       "//teiHeader/fileDesc/sourceDesc/bibl/publicationStmt/date",
+	       "//teiHeader/fileDesc/sourceDesc/biblFull/imprint/date",
+	       "//teiHeader/fileDesc/sourceDesc/bibl/imprint/date",
+	       "//teiHeader/fileDesc/sourceDesc/bibl/date",
+	       "//teiHeader/fileDesc/publicationStmt/date",
+	       "//mepHeader/docDate/supplied",
+	       "//mepHeader/docDate",
+	       );
+
+@xpcreatedates = (
+		  "//teiHeader/profileDesc/creation/date"
+		  );
+
+@xpextents = (
+	      "//teiHeader/fileDesc/sourceDesc/biblFull/extent",
+	      "//teiHeader/fileDesc/sourceDesc/bibl/extent"
+	      );
+
+@xpeditors = (
+	      "//teiHeader/fileDesc/sourceDesc/biblFull/titleStmt/editor",
+	      "//teiHeader/fileDesc/sourceDesc/bibl/titleStmt/editor",
+	      "//teiHeader/fileDesc/sourceDesc/bibl/editor",
+	      );
+
+@xpidentifiers = (
+		  "//teiHeader/fileDesc/publicationStmt/idno",
+		  "//teiHeader/fileDesc/titleStmt/amid",
+		  "//teiHeader/profileDesc/textclass/classcode",
+		  "//mepHeader/idno",
+		  );
+
+@xpgenre = ();
+
+@xpkeywords = (
+	       "//teiHeader/profileDesc/textClass/keywords/list/item",
+	       "//headNote/index",
+	       );
+
+@xprecipients = ();
+
+@xplanguage = (
+	       "//teiHeader/profileDesc/langusage/language",
+	       );
+
+@xpnotes = ( 
+	     "//teiHeader/fileDesc/notesStmt/note",
+	     );
+
+@xpauthorgender = ();
+
+@xpcollection = (
+		 '//teiHeader/fileDesc/titleStmt/title[@type="main"]',
+		 );
+
+@xpperiod = ();
+
+open FILEIN, "$file_list";
+while ($filename = <FILEIN>) {
+    $filename =~ s/\n//g;
+    push(@xmlfiles, $filename);
+}
+close FILEIN;
+
+foreach $filein (@xmlfiles) {
+    if ($debug==1) {
+	print "FILENAME: $filein\n";
+    }
+    
+# initialize each of the bibliographic fields
+    $theoutrecord = "";
+    $recordwithkey = "";
+    $thesortkey = "";
+    $title = "";
+    $author = "";
+    $date = "";
+    $authordate = "";
+    $publisher = "";
+    $pubplace = "";
+    $pubdate = "";
+    $createdate = "";
+    $extent = "";
+    $editor = "";
+    $ident = "";
+    $genre = "";
+    $keywords = "";
+    $language = "";
+    $collection = "";
+    $gender = "";
+    $period = "";
+    $notes = "";
+
+    $path_and_file = $directory . "/" . $filein;
+    $long_name = $filein;
+    $long_name =~ s/\/\//\//gi;
+    $long_name =~ s/([^\/]+)\/([^\.]+)(\.xml)/$2$3/gi;
+    $filesize = (stat($path_and_file))[7];
+
+    # initialize the twig
+    my $twig = XML::Twig->new(keep_encoding => 1);
+    $twig->safe_parsefile("$path_and_file");
+    collect_obj($twig);
+    
+    # dispose of the twig completely before processing the next document
+    $twig->dispose;
+    
+    build_record();
+}
+
+@sortlist = sort @thebibliolist;
+
+foreach $bibline (@sortlist) {
+    $bibline =~ s/^[^\t]*\t//;                 # Strip the sort key
+    $bibline =~ s/\n//;                        # Delete the newline
+    $bibline .= "\t" . $documentcounter . "\n";
+    $documentcounter += 1;
+    print $bibline;
+}
+
+# the main sub routine
+sub collect_obj {
+    my ($twig) = @_;
+
+    # loop through each bibliographic array until the xpath search returns an object which we store and print.	
+    
+    foreach $one (@xptitles) {
+	$title = $twig->findvalue($one);
+	if ($title) {
+	    $title =~ s/[\n\t\r\cM\x0a]/ /gi;
+	    if ($debug==1) {
+		print "TITLE: $title\n";
+	    }
+	    last;
+	}
+    }
+    foreach $one (@xpauthors) {
+	$author = $twig->findvalue($one);
+	if ($author) {
+	    $author =~ s/[\n\t\r\cM\x0a]/ /gi;
+	    if ($debug == 1) {
+		print "AUTHOR: $author\n";
+	    }
+	    last;
+	}
+    }
+    foreach $one (@xpauthordates) {
+	$authordate = $twig->findvalue($one);
+	if ($authordate) {
+	    $authordate =~ s/[\n\t\r\cM\x0a]/ /gi;
+	    if ($debug == 1) {
+		print "AUTHORDATE: $authordate\n";
+	    }
+	    last;
+	}
+    }
+    foreach $one (@xppublishers) {
+	$publisher = $twig->findvalue($one);
+	if ($publisher) {
+	    $publisher =~ s/[\n\t\r\cM\x0a]/ /gi;
+	    if ($debug == 1) {
+		print "PUBLISHER: $publisher\n";
+	    }
+	    last;
+	}
+    }
+    foreach $one (@xppubplaces) {
+	$pubplace = $twig->findvalue($one);
+	if ($pubplace) {
+	    $pubplace =~ s/[\n\t\r\cM\x0a]/ /gi;
+	    if ($debug == 1) {
+		print "PUBPLACE: $pubplace\n";
+	    }
+	    last;
+	}
+    }
+    foreach $one (@xppubdates) {
+	$pubdate = $twig->findvalue($one);
+	if ($pubdate) {
+	    $pubdate =~ s/[\n\t\r\cM\x0a]/ /gi;
+	    if ($debug == 1) {
+		print "PUBDATE: $pubdate\n";
+	    }
+	    last;
+	}
+    }
+    foreach $one (@xpcreatedates) {
+	$createdate = $twig->findvalue($one);
+	if ($createdate) {
+	    $createdate =~ s/[\n\t\r\cM\x0a]/ /gi;
+	    if ($debug == 1) {
+		print "CREATEDATE: $createdate\n";
+	    }
+	    last;
+	}
+    }
+    foreach $one (@xpextents) {
+	$extent = $twig->findvalue($one);
+	if ($extent) {
+	    if ($debug == 1) {
+                print "EXTENT: $extent\n";
+            }
+	    $extent =~ s/[\n\t\r\cM\x0a]/ /gi;
+	    last;
+	}
+    }
+    foreach $one (@xpeditors) {
+	$editor = $twig->findvalue($one);
+	if ($editor) {
+	    if ($debug == 1) {
+                print "EDITOR: $editor\n";
+            }
+            $editor =~ s/[\n\t\r\cM\x0a]/ /gi;
+	    last;
+	}
+    }
+    foreach $one (@xpidentifiers) {
+	$ident = $twig->findvalue($one);
+	if ($ident) {
+	    if ($debug == 1) {
+                print "IDENT: $ident\n";
+            }
+            $ident =~ s/[\n\t\r\cM\x0a]/ /gi;
+	    last;
+	}
+    }
+    foreach $one (@xpgenre) {
+	$genre = $twig->findvalue($one);
+	if ($genre) {
+	    if ($debug == 1) {
+                print "GENRE: $genre\n";
+            }
+            $genre =~ s/[\n\t\r\cM\x0a]/ /gi;
+	    last;
+	}
+    }
+    foreach $one (@xpkeywords) {
+	$keywords = $twig->findvalue($one);
+	if ($keywords) {
+	    $keywords =~ s/[\n\t\r\cM\x0a]/ /gi;
+	    if ($debug == 1) {
+                print "KEYWORDS: $keywords\n";
+            }
+	    last;
+	}
+	# uncomment lines below to grab keywords from the MEP Sanger archive
+	# if (!$keywords) {
+	#    $elt = $twig->first_elt("index");
+	#    $keywords = $elt->att("level1");
+	#    $keywords .= ", " . $elt->att("level2");
+	#}
+    }
+    foreach $one (@xprecipients) {
+	$recipients = $twig->findvalue($one);
+	if ($recipients) {
+	    $recipients =~ s/[\n\t\r\cM\x0a]/ /gi;
+            if ($debug == 1) {
+                print "RECIPIENTS: $recipients\n";
+            }
+	    last;
+	}
+    }
+    foreach $one (@xplanguage) {
+	$language = $twig->findvalue($one);
+	if ($language) {
+	    $language =~ s/[\n\t\r\cM\x0a]/ /gi;
+            if ($debug == 1) {
+                print "LANGUAGE: $language\n";
+            }
+	    last;
+	}
+    }
+    foreach $one (@xpnotes) {
+	$notes = $twig->findvalue($one);
+	if ($notes) {
+	    $notes =~ s/[\n\t\r\cM\x0a]/ /gi;
+            if ($debug == 1) {
+                print "NOTES: $notes\n";
+            }
+	    last;
+	}
+    }
+    foreach $one (@xpauthorgender) {
+	$gender = $twig->findvalue($one);
+	if ($gender) {
+	    $gender =~ s/[\n\t\r\cM\x0a]/ /gi;
+            if ($debug == 1) {
+                print "GENDER: $gender\n";
+            }
+	    last;
+	}
+    }
+    foreach $one (@xpcollection) {
+	$collection = $twig->findvalue($one);
+	if ($collection) {
+	    $collection =~ s/[\n\t\r\cM\x0a]/ /gi;
+            if ($debug == 1) {
+                print "COLLECTION: $collection\n";
+            }
+	    last;
+	}
+    }
+    foreach $one (@xpperiod) {
+	$period = $twig->findvalue($one);
+	if ($period) {
+	    $period =~ s/[\n\t\r\cM\x0a]/ /gi;
+            if ($debug == 1) {
+                print "PERIOD: $period\n";
+            }
+	    last;
+	}
+    }
+    
+    
+    # create variable $sourcedate from $createdate if it exists,
+    # otherwise we use $pubdate if it exists.
+    if ($createdate) {
+	$sourcedate = $createdate;
+    } elsif ($pubdate) {
+	$sourcedate = $pubdate;
+    }
+    
+    # turn $sourcedate into four-digit string
+    if ($sourcedate) {
+	$sourcedate =~ m/[^\d]*([\d]{4})[^\d]*/gi;
+	$sourcedate = $1;
+    }
+    
+    # create string to use for $ident in case one is not supplied
+    $title_nospace = $title;
+    $title_nospace =~ s/\s//gi;
+    $title_nospace =~ s/[^\w^\d]//gi;
+    $title_nospace =~ tr/A-Z/a-z/;
+    $title_nospace = substr($title_nospace, 0, 10);
+    
+    if (!$ident) {
+	$ident = $title_nospace;
+    }
+
+}
+
+sub build_record {
+    $theoutrecord = $title . "\t" . $author . "\t" . $sourcedate . "\t" . $genre . "\t" . $publisher . "\t" . $pubplace . "\t" . $extent . "\t" . $editor . "\t" . $pubdate . "\t" . $createdate . "\t" . $authordate . "\t" . $keywords . "\t" . $language . "\t" . $collection . "\t" . $gender . "\t" . $notes . "\t" . $period . "\t" . $ident . "\t" . $filein . "\t" . $filesize . "\n";
+    $thesortkey = $sourcedate ." ". $author ." ". $title;
+    $thesortkey =~ tr/A-Z/a-z/;
+    $recordwithkey = $thesortkey . "\t" . $theoutrecord;
+    push (@thebibliolist, $recordwithkey);
+    if ($debug == 1) {
+	print "SORTKEY: $thesortkey\n";
+    }
+}
+
+

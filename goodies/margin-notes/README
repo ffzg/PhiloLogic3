@@ -1,0 +1,6 @@
+If you want notes to show up in the margins, like this:
+
+http://gide.uchicago.edu/cgi-bin/newphilo/getobject.pl?c.933:25.eebotcpall.851126
+
+then you can use the philosubs_part.pl file here to create the notes, styles.css file in your stylesheet, and you should be off and running.
+Merge the stylesheet into you Results_Header.html file and the perl formatting into your Philosubs.pl (you'll have to figure out the sensical place to put it, depending on what type of document you have loaded and where that is processed).

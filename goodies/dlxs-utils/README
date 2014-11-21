@@ -1,0 +1,44 @@
+
+These are some very useful utilities from the Digital Library
+Extension Service (DLXS) at the University of Michigan.  All
+rights belong to DLXS at the University of Michigan.
+
+I include them here for reference purposes only and to make sure 
+that ARTFL folks have access to them for internal development.  
+
+Please consult the DLXS web site (http://www.dlxs.org/) for updates.   
+There is some documentation available at
+  http://www.dlxs.org/docs/12/class/unicode.html
+
+The most useful at ARTFL so far are
+
+ncr2utf8.pl:  Convert numeric character references (NCRs) and 
+              SGML character entity references (CERs) to Unicode 
+              UTF-8 encoded characters 
+This could be included in the textload function, but we
+decided that we would convert Numeric Character references
+before loading.  
+
+isocer2utf8.pl: Translate ISO Character Entity References
+                to UTF-8.  This is an incredibly complete
+                conversion function of character entities
+                to UTF-8.  
+We decided again to convert these before loading rather
+than doing it dynamically.  
+
+tif2web-1.0.3:  convert 2-color TIFF images to scaled-down web-ready
+                images (GIF and PNG)
+For future reference.  We have used earlier versions of this 
+to handle dynamic image conversion and scaling.  Tarball included.
+
+iso8859ToUtf8.pm: ConvertCollectionChars, Converst Collection 
+                  specific Characters Entities to their corresponding 
+                  unicode value.
+Looks to be an older version of isocer2utf8.pl.  Kept here just in
+case.
+
+And finally two MARC record conversion utilities.  Here again, just
+in case we find them useful.
+
+MVO, 2/06
+

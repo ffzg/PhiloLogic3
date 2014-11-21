@@ -1,0 +1,20 @@
+<SCRIPT LANGUAGE="JavaScript">
+    var thisid = GetCookie(cookiename);
+    if (thisid == null) {
+        var n = Math.random();
+        var x = n.toString();
+        var p = x.replace(/\./, "9");
+        thisid = p.substr(2,10);
+        SetCookie(cookiename, thisid);
+    }
+    document.write('<br><b>&sect; Saving Search History:</b> ');
+    document.write('Users may save their searches by checking this box ');
+    document.write('<input type=\"checkbox\" name=\"KEEPHISTORY\"' +
+                    'value=\"' + thisid + '\"> <br>');
+    document.write('and return at any time to '); 
+    document.write(' <a href=\"' + philohist + 'HISTORYFILE=' +
+                     thisid + '\">Open Saved Searches</a> ');
+    document.write(' provided they are using the same machine. <p>');
+</SCRIPT>
+</form>
+

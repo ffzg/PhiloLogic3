@@ -1,0 +1,398 @@
+#!@PERL@ -w  # autoconfiscate me
+
+# $Id: philoload.plin,v 2.4 2004/11/16 17:43:23 o Exp $
+
+# Usage: philoload databasename [--files=/path/to/texts/] 
+# [--image=/var/philo/IMAGE/] [--loader=/path/to/textloader]
+# [--mkbibliography=/path/to/extractor] [--filelist=files2load.txt]
+# [--bibliography=/path/to/homemadebibliography]
+# [--texttype=ate|docbook|plaintext] [--skipforms]
+# [--loadsql] [--sqluser] [--sqlpass=password] [--nosqlpass] 
+# [--delete] [--dontclean] [--linksourcetexts] files1.xml file3* *.sgml
+
+use Time::Local;
+use Getopt::Long;
+use Cwd qw(chdir getcwd);
+
+$now = timelocal((localtime)[0,1,2,3,4,5]);
+
+${prefix} = "" unless ${prefix};
+
+$file = "@sysconfdir@/philologic/philologic.cfg";  # autoconfme
+# read in config files
+unless ($return = do $file) {
+    die "couldn't parse $file: $@" if $@;
+    die "couldn't do $file: $!"    unless defined $return;
+    die "couldn't run $file"       unless $return;
+}
+
+# Check to see if the lock file exists.... if so, die
+# Otherwise, create it. 
+
+if (-e $PHILOTMP . "/philo.lock") {
+    die "The lockfile " . $PHILOTMP . "/philo.lock has been detected. Philoload might already be running, and we can only have one version running at a time. Examine the lock file. It should contain the PID of the philoload process that created it. If that process isn't running anymore, it probably exited abnormally and you can delete the lock file and re-run your philoload command.";
+} else {
+    open (LOCK, ">$PHILOTMP/philo.lock");
+    print LOCK $$ . "\n";
+    close LOCK;
+}
+
+
+if (scalar(@ARGV) == 0) {
+    &usage;
+    die;
+}
+
+# dbname must always be specified first
+
+$dbname = shift @ARGV;
+
+GetOptions( "texts:s" => \$TEXTS,
+	    "image:s" => \$IMAGE,    # where to put the database
+	    "loader:s" => \$loader,  # alternate text loader
+	    "mkbibliography:s" => \$mkbibliography,#alt bib extract
+	    "filelist:s" => \$filelistfile, # filestoload
+	    "loadsql" => \$loadsql, # load metadata to mysql db
+	    "sqluser:s" => \$sqluser, # sqlusername
+	    "sqlpass:s" => \$sqlpass, # password for sql user
+	    "nosqlpass" => \$nosqlpass, # sql user has no passwd
+	    "delete" => \$delete,  # delete previous IMAGE
+	    "dontclean" => \$dontclean, # keep work/ and STATE
+	    # rather than copying the original text files into 
+	    # $IMAGE/TEXTS, --linksourcetexts preserves the original behavior
+	    # of symlinking to the original location of the texts.
+	    # if this option is used, any moves, changes or permission
+	    # trickiness on the original files will cause problems.
+	    "linksourcetexts" => \$linksourcetexts, 
+	    "linksourcetext" => \$linksourcetexts, 
+	    "bibliography:s" => \$bibliography,
+	    "skipforms" => \$skipforms,
+            "texttype:s" => \$texttype,
+	    );
+
+
+# Initialize some default/generated values
+
+if (!$TEXTS) {
+    $TEXTS = getcwd();
+}
+if (!$IMAGE) {
+#    $IMAGE = "$PHILODATADIR/databases/$dbname/$now/";
+    $IMAGE = "$PHILODATADIR/databases/$dbname/";
+}
+
+if (!$loader) {
+    if ($texttype eq "ate") {
+        $loader = "$PHILOBUILDDIR/utils/xml-sgml-ateloader.plin";
+    } elsif ($texttype eq "docbook") {
+        $loader = "$PHILOBUILDDIR/utils/dbtextload.plin";
+    } elsif ($texttype eq "plaintext") {
+        $loader = "$PHILOBUILDDIR/utils/plaintextload.plin";
+    } else {
+        $loader = "$PHILOBUILDDIR/utils/xml-sgmlloader.plin";
+    }
+}
+
+if (!$mkbibliography) {
+    if ($texttype eq "ate") {
+        $mkbibliography = "$PHILOBUILDDIR/utils/dublin.extract.plin";
+    } elsif ($texttype eq "docbook") {
+        $mkbibliography = "$PHILOBUILDDIR/utils/dbbiblio.plin";
+    } elsif ($texttype eq "plaintext") {
+        $mkbibliography = "$PHILOBUILDDIR/utils/plainbiblio.plin";
+    } else {
+        $mkbibliography = "$PHILOBUILDDIR/utils/newextract.plin";
+    }
+}
+
+if ($bibliography) {
+	$do_mkbibliography = "no";
+}
+if ($filelistfile) {
+    open (FILELIST, "<", $filelistfile) or die "$!";
+    while ($line = <FILELIST>) {
+	$filelist .= "$line";
+    }	
+}	
+while ($thisarg = shift(@ARGV)) {
+    $filelist .= "$thisarg\n";
+}
+if (!$filelist) {
+    die "Please specify at least one file to load!";
+}
+
+if ($loadsql) {
+        if ($sqluser) {
+                $mysqlflags = "-u $sqluser";
+                }
+        elsif ($SQLUSER) {
+                $mysqlflags = "-u $SQLUSER";
+                }
+        else {
+                print "No sqluser found!\n";
+                }
+
+        if ($nosqlpass) {
+                print "No sqlpasswd specified";
+                }
+        elsif ($sqlpass) {
+                $mysqlflags .= " --password=$sqlpass";
+                }
+        elsif ($PASSWD) {
+                $mysqlflags .= " --password=$PASSWD";
+                }
+        else {
+                print "SQL passwd not specified\n";
+                }
+        }
+
+unless ($dbname =~ m/^([[:alnum:]]+)$/) {
+    print "Please specify a database name with only letters and numbers\n";
+    print "(and be sure that the database name is specified first)\n";
+    &usage;
+    exit;
+}
+$dbname = $1;
+
+if ((-e $IMAGE) && (!$delete)) {
+    die "\n\nA database already exists in:\n$IMAGE\
+	Please specify another dbname, --image=/somewhere/else,\
+	or run with --delete\n";
+}
+elsif ((-d $IMAGE) && ($delete)) {
+    system("rm -rf $IMAGE");
+}
+
+&genfilelist;
+&genloadcfg;
+&makemess;
+
+# Remove the lock file
+
+$res = `rm $PHILOTMP/philo.lock`;
+
+sub genloadcfg {
+
+    open (OLD, "<", "$PHILOBUILDDIR/loadcfgs/load.cfg.boilerplate") or die "$!";
+    open (NEW, ">", "$PHILOBUILDDIR/loadcfgs/load.cfg.$dbname.$now.gen") or die "$!";
+
+    while (<OLD>) {
+	s/^IMAGE=  ...INSERTED.../IMAGE= $IMAGE/g;
+	s/^STATE=  ...INSERTED.../STATE= $STATE/;
+	s/^CRAPS=  ...INSERTED.../CRAPS= $CRAPS/;
+	s/^TEXTS=  ...INSERTED.../TEXTS= $TEXTS/;
+	s/^WORK=   ...INSERTED.../WORK=  $WORK/;
+	s/^TEXTLOAD = ...INSERTED.../TEXTLOAD = $loader/;
+	s/^MKBIBLIOGRAPHY = ...INSERTED.../MKBIBLIOGRAPHY = $mkbibliography/;
+	
+	print NEW $_ or die "$!";
+    }
+
+    close(OLD);
+    close(NEW);
+
+}
+
+sub enterdbname {
+
+    open (OLD, "<", "$PHILOSITECFG/dbnames") or die "$!";
+    open (NEW, ">", "$PHILOSITECFG/dbnames.tmp") or die "$!";
+
+    while (<OLD>) {
+	if (m/^"$dbname" => /) {
+	    s/=> ".*",$/=> "$IMAGE",/;
+	}
+	else {
+	    s/^(\#\# PRESERVE THIS HERE COMMENT)/"$dbname" => "$IMAGE",\n\n$1/g;
+	}
+	print NEW;
+    }
+    close(OLD);
+    close(NEW);
+
+    rename("$PHILOSITECFG/dbnames", "$PHILOSITECFG/dbnames.pre.$now") or die "$!";
+    rename("$PHILOSITECFG/dbnames.tmp", "$PHILOSITECFG/dbnames") or die "$!";
+
+}
+
+sub genfilelist {
+
+    system ("rm -f $PHILOBUILDDIR/files") && warn "Couldn't delete old version of filelist: $PHILOBUILDDIR/files";
+    open (FILES, ">", "$PHILOBUILDDIR/files") or die "$!";
+    print FILES $filelist;
+    close(FILES);
+}
+
+sub makemess {
+    system ("mkdir -p $IMAGE") or warn "couldn't mkdir -p $IMAGE";
+    system ("rm -f $PHILOBUILDDIR/load.cfg");
+    system ("ln -s $PHILOBUILDDIR/loadcfgs/load.cfg.$dbname.$now.gen $PHILOBUILDDIR/load.cfg");
+
+
+    system ("/usr/bin/make -C $PHILOBUILDDIR really-clean");
+    system ("/usr/bin/make clean -C $PHILOBUILDDIR/utils");
+    system ("/usr/bin/make -C $PHILOBUILDDIR/utils");
+	if ($bibliography) {
+		system ("cp $bibliography $PHILOBUILDDIR/bibliography")
+	}
+	system ("/usr/bin/make load -C $PHILOBUILDDIR");
+
+    if (-e "$PHILOBUILDDIR/work/loadinstall.done") {
+	print "\n\n@@@@@@@@@@@@@@@@@@@@@@ SUCCESS @@@@@@@@@@@@@@@@@@@@\n";
+	print "Load appears to have been successful.\n";
+	&enterdbname;	
+	open (LOADSQLIN, "<", "$PHILOBUILDDIR/etc/load.database.sql") or die "$!\n";
+	open (LOADSQLOUT, ">", "$IMAGE/load.database.sql") or die "$!\n";		
+	while (<LOADSQLIN>) {
+	    s/\.\.\.IMAGE\.\.\./$IMAGE/g;
+	    s/\.\.\.DBNAME\.\.\./$dbname/g;
+	    print LOADSQLOUT;
+	}	
+# Install subdiv table loader ... in a real installation this should be
+# run below....
+     open (LOADSQLIN, "<", "$PHILOBUILDDIR/etc/load.subdoctables.sqltmplet") or die "$!\n";
+     open (LOADSQLOUT, ">", "$IMAGE/load.subdoctables.sql") or die "$!\n";
+     while (<LOADSQLIN>) {
+          s/\.\.\.IMAGE\.\.\./$IMAGE/g;
+          s/\.\.\.DBNAME\.\.\./$dbname/g;
+          print LOADSQLOUT;
+      }       
+     close (LOADSQLIN);
+     close (LOADSQLOUT);
+
+# Install Whizbang Form generator.... in a real install, this should run...
+  print "Making Search Form Generator (which you can edit in lib)\n";
+  open (WHZN, "<", "$PHILOBUILDDIR/installdir/makeforms_gold.pl") or die "$!\n";
+  open (WHZO, ">", "$IMAGE/lib/makeforms_gold.pl") or die "$!\n";         
+  while (<WHZN>) {
+        s/\.\.\.IMAGE\.\.\./$IMAGE/g;
+        s/\.\.\.DBNAME\.\.\./$dbname/g;
+        print WHZO;
+        }       
+   close (WHZN);
+   close (WHZO);
+   system ("chmod +x $IMAGE/lib/makeforms_gold.pl");
+
+# Unless they have requested not on the command line with --skipforms
+# run the form generation script
+    unless ($skipforms) {
+          system ("$IMAGE/lib/makeforms_gold.pl");
+    }
+
+   &sqlload;
+
+# If $CreateTarball has been set on in /etc/philologic.cfg,
+# try to make one and put it into the web directory.
+if ($CreateTarball) {
+   &maketarball;
+}
+    }
+    else {
+	print "\n\n###################### FAILURE ####################\n";
+        print "Load failed, alas.  Look at $IMAGE/LOADER.LOG for clues 
+               then run philoload again.\n";
+    }
+
+    unless ($linksourcetexts) {
+	system ("rm $IMAGE/TEXTS");
+	system ("mkdir $IMAGE/TEXTS");
+	foreach $cpfile (split /\n/, $filelist) {
+	    system ("cp $TEXTS/$cpfile $IMAGE/TEXTS/");
+	}
+    }
+
+    unless ($dontclean) {
+	system ("mv $PHILOBUILDDIR/work/LOADER.LOG $IMAGE/");
+	system ("rm -rf $PHILOBUILDDIR/work/*");
+	system ("rm -rf $PHILOBUILDDIR/STATE/*");
+    }
+}
+
+
+sub usage {
+    
+    print "usage: \n
+ philoload databasename [ --files=/path/to/texts/ ] [ --image=/var/philo/IMAGE/] [ --loader=/path/to/textloader ] [ --mkbibliography=/path/to/extractor ] [ --bibliography=/path/to/homemadebibliography ] [--texttype=ate|docbook|plaintext] [--skipforms] [ --loadsql ] [ --nosqlpass ] [ --sqlpass=password ] [ --dontclean ] [ --delete ] [ --linksourcetexts ] files1.xml file2.sgml file3*\n";
+    
+}
+
+sub sqlload {
+    if ($loadsql) {
+	system("$MYSQL $mysqlflags < $IMAGE/load.database.sql");
+	system("$MYSQL $mysqlflags < $IMAGE/load.subdoctables.sql");
+	open (PHILODBBP, "<", "$IMAGE/lib/philo-db.cfg") or die $!;
+	open (PHILODBFINAL, ">", "$IMAGE/lib/philo-db.cfg.tmp") or die $!;
+	while (<PHILODBBP>) {
+	    if(m/mysql_socket=([^\"]*)"/g) {
+		$sock = $1;
+		if ($sock =~ /UNKNOWN/) {
+		    print <<EOF
+	
+      
+ WARNING:
+   I still don\'t know where your mysql socket is.
+   Please enter this in $IMAGE/lib/philo-db.cfg line $.
+   (Or, better, to get rid of this message forever, enter it in
+   $PHILOBUILDDIR/installdir/lib/philo-db.cfg)
+EOF
+		    }
+		
+		elsif (!(-e $sock)) {
+		    print <<EOF
+	
+	
+ WARNING:
+   The MySQL socket specified in:
+   $IMAGE/lib/philo-db.cfg line $ 
+   does not appear to exist.  It iss possible that
+   mysqld is not running, or that our attempt to
+   automatically locate mysql.sock failed
+   ungracefully.  In any case, bibliographic
+   searching of metadata from MySQL is likely not
+   to work until the correct value is specified.
+   Fixing it in $IMAGE/lib/philo-db.cfg will
+   resolve the problem for this database; to fix
+   it for all future loads, specify it correctly
+   in $PHILOBUILDDIR/installdir/lib/philo-db.cfg
+EOF
+			
+		    }
+	    }		
+	    s/\$SQLenabled = .;/\$SQLenabled = 1;/g;
+	    s/\$subdocSQLenabled = .;/\$subdocSQLenabled = 1;/g;
+	    s/\.\.\.DBNAME\.\.\./$dbname/g;
+	    print PHILODBFINAL;
+	}	
+	close (PHILODBBP);
+	close (PHILODBFINAL);
+	
+	rename("$IMAGE/lib/philo-db.cfg", "$IMAGE/lib/philo-db.cfg.orig") or die "$!";
+	rename("$IMAGE/lib/philo-db.cfg.tmp", "$IMAGE/lib/philo-db.cfg") or die "$!";
+	system("mv $IMAGE/gimme $IMAGE/gimme.perl");
+	system("ln -s $IMAGE/gimme.sql $IMAGE/gimme");
+        system("mv $IMAGE/subdocgimme $IMAGE/subdocgimme.perl");
+        system("ln -s $IMAGE/subdocgimme.sql $IMAGE/subdocgimme");
+	print "Loaded ALL metadata into sql database $dbname.\n";
+	print "Please ensure that the password for the philologic MySQL user\n";
+	print "is specified in ${prefix}/etc/philologic/philologic.cfg\n";
+
+    }
+}
+
+sub maketarball {
+
+    $excludeflags = "--exclude=STATE --exclude=TEXTS --exclude=bibliography --exclude=config.log --exclude=config.status --exclude=databases --exclude=hitlists --exclude=work --exclude=files --exclude=loadcfgs/*.gen --exclude=dbnames.h --exclude=local-cgi-bin --exclude=utils/enprefix --exclude=utils/unprefix --exclude=pack/indstrip";
+
+    print "Putting downloadable source tarball in:\
+ $PHILOWEBPATH/philologic.2.9pre8-$dbname.tar.gz\n";
+    print "(this will be reachable at:\
+http://yourhost/$PHILOWEBURL/philologic.2.9pre8-$dbname.tar.gz)\n";
+
+    chdir "$PHILOBUILDDIR";
+    system ("ln -s -f loadcfgs/load.cfg.boilerplate load.cfg");
+
+    chdir "${prefix}/var/lib";
+    system ("tar czf $PHILOWEBPATH/philologic.2.9pre8-$dbname.tar.gz philologic/ $excludeflags");
+
+    
+}

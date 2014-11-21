@@ -1,0 +1,39 @@
+<table>
+  <tr>
+    <td width=238>&nbsp;&nbsp;&nbsp; </td>
+    <td width=738><input type=submit value=SEARCH>&nbsp;&nbsp;<input type=reset value=CLEAR></td></tr>
+
+   <tr>
+      <td width=238><b>&sect;Search in Texts for:</b> </td>
+      <td width=738><input name=word size=28> (e.g., <i>safe</i>) 
+          <input type="checkbox" name="SIMWORD" value="ON"> Similar Word Search
+      </td>
+   </tr>
+   <tr>
+     <td width="238">
+   </tr>
+</table>
+
+<table>
+  <tr>
+    <td width=760>Note: For pattern matching one may employ wildcard 
+      characters (e.g., <i>widow*</i> retrieves widow, widowe, 
+widowhood, etc.).  To search without considering diacritics turn on 
+"Caps Lock" and type in all uppercase (e.g., <i>NAIVETE</i> finds 
+both naivete and na&iuml;vet&eacute;).  Selecting similar word search
+applies to all words in the database.
+     </td>
+   </tr>
+</table>
+
+<table>
+  <tr>
+        <td><b>&sect; Select a Search Option:</b>
+	<input CHECKED name=CONJUNCT type=radio value=PHRASE> Single Term and Phrase Search (default)
+	<input name=CONJUNCT type=radio value=PROXY>Phrase separated by <input name=DISTANCE size=2 value=2> words <select name=PROXY> <option selected> or fewer<option>exactly</option></select><br>
+	<input name=CONJUNCT type=radio value=6> Proximity Searching in the same Sentence or <input name=CONJUNCT type=radio value=5> in the same Paragraph<br>
+	&sect; Select a Results Format: <input CHECKED name=OUTPUT type=radio value=conc> Occurrences with Context (default) &nbsp;&nbsp; <input name=OUTPUT 
+type=radio value=kwic> Occurrences Line by Line
+        </td>
+   </tr>
+</table>

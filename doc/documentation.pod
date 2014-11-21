@@ -1,0 +1,280 @@
+# $Id: documentation.pod,v 1.5 2004/07/02 20:11:46 rlvoyer Exp $
+=head1 Developer Documentation
+
+=head2 Technical Overview
+
+Originally implemented to support large databases of French literature, PhiloLogic has been extended to support a wide variety of textual and hypermedia databases in collaboration with numerous academic institutions and, more recently, commercial organizations. PhiloLogic is a modular system, in which a textbase is treated as a set of coordinated or related databases, typically including an object (units of text such as a letter, scene, document, etc) database, a word forms database, a word concordance index mapped to textual objects, and an object manager mapping text objects to byte offsets in data files. Each of these databases is stored and managed using its own subsystem.
+
+We are including with this release package two versions of the Philologic search engine: our current production implementation, search 2; and search 3, a new version that is currently undergoing testing. Search 3 is included as a swap-compatible module that, should it prove bug free, can be implemented with little configuring. It has a much cleaner internal schema allowing for flexible object-depth architecture and a word object attribute field for searching on any selected objects (this functionality requires a more sophisticated indexing engine before it can be fully implemented). Search 3 also includes the NOT operator for word searches.
+
+=head2 Installing PhiloLogic
+
+PhiloLogic's distribution is still very much alpha-quality, and to date it has been installed almost exclusively by people who are experts in its intricacies.  If don't complete an installation, even if you just unpack it and lose interest, we'd really like to hear about it so we can make the package install in a more sensible way. Of course we'd love to hear that you have completed an installation and are searching tons of text, as well.  Please write to support@philologic.uchicago.edu with your reports.
+
+Creating a database using philologic is designed to be a simple process with several configurable options to tailor searching to fit your document set. You may choose to simply run a PhiloLogic load right out of the box using the default settings that we have found sufficient for our own full-text searching needs.
+
+Some dependencies: gawk, perl, gdbm/gdbm-dev, gnutar, egrep
+Optional dependencies: mysql, agrep
+
+The first step to installing PhiloLogic is to unzip the installation files and enter the top-level source directory:
+C< tar -xvzf philologic-2.8.tar.gz
+cd philologic-2.8 >
+
+If you're on Debian, proceed with the following:
+C< $ ./configure --with-authuser-group=a-group-you-trust
+$ su
+# make install
+# /etc/init.d/nserver start
+$ less LOADING >
+
+But if you're not on Debian (and not unlikely even if you are on Debian) you may well want to change some installation locations. These are the key ./configure arguments [default values follow in brackets]
+C< --with-authuser-group=groupname       name of group authorized to build
+                                PhiloLogic databases [philologic]
+  --with-cgi-path=DIR   sets filesystem path to cgi-bin directory
+                        [/usr/lib/cgi-bin/newphilo]
+  --with-cgi-url=DIR    sets URL path to cgi-bin directory [/cgi-bin/newphilo]
+  --with-web-path=DIR   sets filesystem path for sample search page
+                        and source downloads [/var/www/philologic]
+  --with-web-url=DIR    sets URL path for sample search page
+                        and source downloads [/philologic]
+  --with-init-d=DIR     sets path to initscripts directory [/etc/init.d]
+  --with-boot-init-d=DIR        sets path to default boot init.d directory
+                                [/etc/rc2.d] >
+
+If you were on Mac OS X (which is close to being supported but is really cranky right now and I don't recommend trying it unless you want to bang your head against it to make it work) you would say:
+
+C< ./configure 
+--with-cgi-path=/Library/ WebServer/CGI-Executables/philo
+--with-cgi-url=/cgi-bin/philo
+--with-web-path=/Library/WebServer/Documents/philologic
+--with-web-url=/philologic
+--with-init-d=$HOME --with-boot-init-d=$HOME
+--with-authuser-group=staff  >
+
+You might also want to set the autoconf variables --sysconfdir=[something other than /etc], --bindir=[something other than /bin] and --localstatedir=[something other than /var (by default most of the install ends up in /var/lib/philologic)].  You can NOT successfully specify a PREFIX with make install PREFIX=/usr/local; this just ends up being ignored.
+
+You have to specify web and cgi directories twice, once for where they are on the filesystem and once for where they are in URLs.  You can, of course, put these things wherever you want as long as your search pages point to the right cgi locations.
+
+=head2 Preparing Your Collection
+
+Once the necessary components of PhiloLogic are installed on your machine, running a load is a single command-line process that takes as an argument the file(s) you wish to include in your collection. Start by changing to the installation loader directory I<loader2txml >:
+C< cd /var/lib/philologic/loader2txml >
+
+To specify which files you would like to load, you may either supply the location of a file containing a list of filenames or by listing the filenames on the command-line. It is important to remember that the order of the command-line arguments IS significant. The first argument must be the name of the database image you will be creating and the last argument must be the files to be loaded. You will notice a sample list of files named I<files >. You will need to create your own file list containing the filename for all the files you wish to load into your database. For example, suppose you are loading an entire directory of files named I<xmlfiles > located in your home directory:
+C< \ls /home/me/xmlfiles E<gt> ./files >
+
+Make sure there are no lines containing filenames for files that you don't want to load such as a DTD or an XML schema living in the same directory as your XML files. The C< \ > before the C< ls > ensures that any options passed to C< ls > by shell aliases [e.g. syntax coloring] do not contaminate the file that you generate.
+
+=head2 Creating a Bibliography
+
+The next step in the load process is to create a bibliography according to the document set that is to be loaded. You may provide your own bibliography, the only requirement being that it is in tab-delimited format. Otherwise, we have provided two mechanisms for creating a tab-delimited bibliography. There is a non-xml-aware bibliographic loader that specifies default locations for certain metadata such as title, author, year, etc. We have also provided a non-validating XML-aware version of the bibliographic loader, built-on Michel Rodriguez's XML::Twig Perl Module, that by default checks for the same metadata fields as the non-xml-aware version. Both of these scripts output a tab-delimited file in the load directory called I<bibliography >. The exact structure of the bibliography is described below:
+C< title \t  author (a1; a2; a3;...) \t  year \t  genre/doctype \t  publisher \t  place of publication \t  extent \t  editor \t  publication date \t  creation date \t  author date \t  keywords \t  language \t  collection \t  gender \t  notes \t  period \t  document identifier (5-20 alpha-numerics) \t  filename \t  filesize \t  philologic id number >
+
+PhiloLogic was designed to be largely configurable. The bibliography module is no exception. The first thing you'll need to decide is whether you wish to use the non-xml-aware, the xml-aware version or to provide your own. The former assumes that the document header will be either a E<lt>teiHeaderE<gt> or E<lt>mepHeaderE<gt>. The Twig-based metadata extractor allows you to specify the header tag, with the default being E<lt>teiHeaderE<gt>. Be aware that even though we allow for ANY type of header, the paths the extractor looks in by default for bibliographic data are those that our sample TEILITE XML and MEP XML documents have shown to most commonly contain the relevant data. Also note, that the "poor man's" metadata extractor will work with both XML and SGML while the Twig-based version requires XML well-formedness in order to parse correctly.
+
+Reconfiguring the path arrays in order to point the metadata extractor to different elements is relatively straight forward. Note that the syntax used to denote a path in the "poor man's" metadata extractor is not XPATH compliant for three reasons: firstly, if a full-path is not being specified, two slashes must precede the first element specified to denote that the path is relative; secondly, you cannot terminate an xpath with a trailing slash; and lastly, the poor man's parser converts all elements to lowercase while XML is case-sensitive. To add an xpath to a path array, you will need to edit I<mkbibliography.pl >. Find the array that corresponds to the field that needs to be updated. For example, if you wish to update the title field, then you'll need to update I<@xptitles >. Simply place your path inside quotes before the first element of the array, being sure to add a comma after the end quote (even if there are no other elements in the path array; better safe than sorry). Here is an example of an xpath that grabs a "subtitle" by pointing to an element with a type attribute with the value I<subordinate > in a Shakespeare text:
+C< the xpath = //teiHeader/fileDesc/titleStmt/title[@type="subordinate"] >
+
+the code:
+C< ========================== mkbibliography.pl ============================
+@xptitles =  ('//teiHeader/fileDesc/titleStmt/title[@type="subordinate"]',...); >
+
+=head2 Loading a Database
+
+The PhiloLogic load process takes a number of TEI-encoded texts, processes them, and creates a directory tree that we call the database image or the system_dir. Loading a database under PhiloLogic, after all the initial preparations have been made, is a one-line command, the total execution time of which depends on a few factors: which bibliographic loader is being used and the size and complexity of the document set. We've written a command-line loader that should handle this, and more, for you, but it's fairly new and so probably immature, so you may find problems with it.  But this is how you use it:
+
+- cd to the directory that holds the texts you wish to load.
+- run a command like: philoload mydatabase *.xml
+
+"mydatabase" is the database name; it must be composed of only the letters A-Za-z and the numerals 0-9, but otherwise it can be whatever you want it to be. It must always be the first argument to philoload.
+*.xml is a shell glob pattern that tells the system to load all the files in the directory whose names end in ".xml". This glob expansion is handled by the shell and it should appear to philoload as though you listed the files as: philoload mydatabase file1.xml anotherfile.xml file3.xml file?.xml
+
+As noted previously, the order of the arguments is significant with the philoload command. The first argument must be the name of the database to appear in the philologic databases hash. The last argument must be the name of the files to be loaded or an optional regular expression such as *.xml (unless the optional argument of a path to a filelist is provided). philoload takes additional arguments that you may see by running it with no arguments. The optional arguments that may occur in between are: a path to a filelist [--filelist=/path/to/filelist]; a location in which the database image is to be stored (by default this location is /var/lib/philologic/databases/dbname) [--image=/path/to/dbimage/]; the location of the bibliographic extractor method to be used (by default newextract.pl) [--mkbibliography=/path/to/makebibliograhpyscript]; an option that tells the loader to load the bibliographic data into a MySQL table automatically [--loadsql]; if MySQL does not correctly assume the username you may specify it [--sqluser=I<username >]; a MySQL no password option [--nosqlpass]; and lastly, an option to delete any old versions of the same database [--delete]. Thus, we have:
+C< cd ~/textsamples/xml/textstobeloaded/
+philoload dbname [--filelist=files2load] [--image=/path/to/dbimage/] [--mkbibliography=/path/to/makebibliographyscript] [--loadsql] [--sqluser=I<username >] [--nosqlpass] [--delete] I<file1.xml > I<file2.xml > ... >
+
+loader and mkbibliography would be local versions/modifications of xml-sgmlloader.pl and newextract.pl that you wanted to use instead of those, but if you're just downloading and testing you probably won't be interested in that for some time.  --loadsql loads the bibliographic metadata into a MySQL database, and --delete deletes pre-existing database images if you know you want to replace them (instead of giving them a different name).
+
+Also note that when specifiying the location for the database image directory, you must terminate the path with a trailing slash.
+
+If the loader says the load was successful, point your browser to http://yourserver/philologic/philosearch.html (or wherever you put philosearch with ./configure --with-web-url=/elsewhere), enter your databasename where it says "ENTER SOMETHING" and run a search.
+
+If your load fails and you can't figure it out, write to support@philologic.uchicago.edu and include (preferably gzipped) /var/lib/philologic/work/LOADER.LOG
+
+=head2 Loading Bibliographic Data into MySQL
+
+To benefit from this feature of PhiloLogic, you will need to have a recent version of MySQL installed. There are (currently) three options to philoload that deal with MySQL functionality:
+
+--loadsql : you have to give this option if you want SQL metadata handling; if you don't give it, you can load it manually later (see below).  When it gets to the SQL load step, mysql will prompt you for a password
+
+--sqluser=foo: by default --loadsql just calls "mysql -p < load.database.sql", which allows mysql to guess your username however it wants. With this option it calls "mysql -u foo -p < load.database.sql";
+
+--nosqlpass: if the sql user (either assumed by mysql or named with --sqluser) doesn't have a password, this suppresses the "-p" option to mysql
+
+If you include the [--loadsql] argument when running the load, the bibliographic data will be loaded into an aptly named database and table automatically. However, if you do not include the argument or need to reload the bibliographic data for any reason, you can do it manually by not including the philoload --loadsql option. Thus, by default you are expected to load the bibliographic data manually. If the --loadsql argument is flagged, you can suppress the "-p" option to MySQL by including the --nosqlpass option.
+
+To load the SQL metadata after running a load, CD to the database image directory and locating the file I<load.database.sql >. This is the SQL load script that will enter all of the bibliographic data into a MySQL table. Before importing the data however, you may need to make a few modifications to this file. If this is the first time you are loading a database of a given name, you will want to comment out the first line which drops a previously existing table of the same name if it exists:
+C< ========================== load.database.sql ============================
+# DROP TABLE I<dbname > IF EXISTS; >
+
+By default, the table name will be the same as the database name. You may choose to make the table name different. For example, if you are running an alternate load of a certain database and are unsure if the bibliographies are identical, it's better to be on the safe side and create a new table rather than replacing the old one. The table name will need to be edited in two places - in the I<CREATE TABLE > line and in the I<LOAD DATA LOCAL INFILE >. Below is the MySQL load syntax and table structure:
+C< CREATE TABLE I<dbname >(
+...
+load data local infile "/var/lib/philologic/databases/I<dbname>/I<imgname >/bibliography" into table I<dbname >
+======================================================================== >
+
+The command to load the bibliography manually is:
+C< mysql --password=I<password > < load.database.sql >
+
+The following variables will be set automatically in /path/to/dbimage/lib/philo-db.cfg if the --loadsql flag is set:
+C<< 
+$SQLenabled = 1;
+$HOST = "localhost";
+$DATABASE = "philologic";
+$USER = "I<mysql_username>";
+$PASSWD = "I<mysql_password>";
+$TABLE = "I<dbname>";
+mv gimme gimme.egrep
+mv gimme.sql gimme >>
+C<< field        SQL-type       gimme-type    Note
+title        VARCHAR(250)   reg-exp
+author       VARCHAR(250)   reg-exp       author(s) name(s)
+date         SMALLINT(4)    numeric       Earliest year INT
+genre        VARCHAR(250)   reg-exp
+publisher    VARCHAR(250)   reg-exp
+pubplace     VARCHAR(250)   reg-exp
+extent       VARCHAR(250)   reg-exp
+editor       VARCHAR(250)   reg-exp
+pubdate      VARCHAR(250)   reg-exp       string, range, etc.
+createdate   VARCHAR(250)   reg-exp       string, range, etc.
+authordates  VARCHAR(250)   reg-exp       string, range, etc.
+keywords     VARCHAR(250)   reg-exp       various types, LC subject, etc.
+language     VARCHAR(250)   reg-exp       language(s) of document
+collection   VARCHAR(250)   reg-exp       collection or series
+gender       VARCHAR(250)   reg-exp       gender of author(s)
+sourcenote   TEXT           reg-exp       notes regarding the document
+period       VARCHAR(250)   reg-exp       period (string, eg. rennaisance)
+shrtcite     VARCHAR(250)   reg-exp       required/reserved: often a local id
+filename     VARCHAR(250)   reg-exp       required/reserved
+filesize     VARCHAR(250)   reg-exp       required/reserved
+philodocid   SMALLINT(4)    exact         required/reserved docs num from 0 >>
+
+If the MySQL bibliographic table does not have enough fields for your data, you may add as many fields as you need. There are two ways of doing this. You can, when running your load, use the --nosqlpass flag and then load the bibliography manually as indicated above after making the necessary modifications to the load.database.sql file in your database image directory. Or you can edit /var/lib/philologic/etc/load.database.sql and change the structure there. Note that modifying /var/lib/philologic/load.database.sql will change the default bibliographic database strucutre for all future PhiloLogic loads.
+
+We don't currently have explicit functionality for loading mysql metadata on a separate server.  In theory you could just change $HOST to point to the other server and load the load.database.sql into the remote MySQL database.  It's possible the code has some assumptions that it's searching on the local host, though the presence of the $HOST variable in the first place suggestst that it will work.
+
+=head2 Results Headers and Footers
+
+The first thing you'll want to do after finishing a load is verify that it loaded properly by running a few searches. Every PhiloLogic load automatically generates a default search page using a generic header and footer and an embedded stylesheet. You may choose to reference your own external stylesheet or edit the embedded default stylesheet. Likewise, you may wish to replace the default results header and footer with one of your own. To do this you'll need to edit the I<readnavbar > function in format.ph in the database image's lib directory. Suppose you wanted to use a header file you've created and saved as I<header-new.html >, you're changes to format.ph would like this:
+C< cd /path/to/dbimage/lib/
+emacs format.ph
+========================== format.ph ============================
+sub readnavbar {
+local ($navigbar, $navin, $mvosysdir);
+$mvosysdir = $SYSTEM_DIR;
+if (!$mvosysdir) {
+$mvosysdir = $sys_dir;
+}
+open (NAVBAR, $mvosysdir . "lib/I<header-new.html>"); >
+
+And if you wanted to use your own footer file named I<footer-new.html >, you would make the following modifications to the I<readfooternavbar > function:
+C< sub readfooternavbar {
+local ($footernavbar, $navin, $mvosysdir);
+$mvosysdir = $SYSTEM_DIR;
+if (!$mvosysdir) {
+$mvosysdir = $sys_dir;
+}
+open (NAVBAR, $mvosysdir . "lib/footer-new.html"); >
+
+=head2 Additional Extensions
+
+Included with the PhiloLogic package are several optional extensions that you may find useful. This is an example of one way to perform interprocess communications from PhiloLogic to another function. The idea is that you may use PhiloLogic as a general search tool, but want to also provide links to further analytical systems. In this way, Philo could be a general document search/delivery system, and provide links to further tools.
+
+There are two ways to connect PhiloLogic functions to HyperPo:  http://huco.ualberta.ca/HyperPo/. The first is to push a PART with the I<getobject > function. This would appear in the bibliographic citation of the object retrieved. It only needs this modification to format.ph, our database specific function library.
+
+C< # ----------------------------------------------------------------------
+# objectheader: Reads the result header and gets the bibliography
+#               for the document.  Objects are called for only 1 document.
+# Called from:
+# ----------------------------------------------------------------------
+sub objectheader {
+local ($txt, $qs, $test);
+$txt = &readnavbar;
+$txt .=  &getbiblioLine ($doc,"link") . "\n";
+$txt .= "E<lt>span class=mwrightE<gt>";
+$test = '[E<lt>a href="http://tapor.ualberta.ca/Tools/Dispatch/?tool=HyperPo';
+$test .= '&delta_iLang=en&url=';
+# You need the full URL since this is going as an argument.
+$qs = "http://thyme.uchicago.edu/cgi-bin/xphilo/getobject_?";
+$qs .= $ENV{'QUERY_STRING'};
+$test .= $qs;
+$test .= '" target=_blankE<gt>Analyze Part with HyperPoE<lt>/aE<gt>]E<lt>/spanE<gt>';
+$txt .= $test;
+$txt .= "E<lt>hr noshadeE<gt>\n";
+return "$txt";
+} >
+
+To push an entire document to HyperPo, get the table of contents.  Modify the NavigBiblio.  Now, if the file is in WWW space, the following could simply point to it.  But to get the link from inside of PhiloLogic, use the following:
+
+C< # ----------------------------------------------------------------------
+#  NavigBiblio: generate the bibliography for document navigation/TOC.
+#  Called from: the cgi-bin function navigate
+# ----------------------------------------------------------------------
+sub NavigBiblio {
+        local ($doc, $rtn, $test, $txt);
+        $doc = $_[0];
+        $rtn = "E<lt>span class=navheadE<gt>Table of ContentsE<lt>/spanE<gt>E<lt>pE<gt>\n";
+        $rtn .= "E<lt>span class=navbiblioE<gt>";
+        $rtn .= &getbiblioLine($doc);
+        $rtn .= "E<lt>/spanE<gt>\n";
+        $txt = "E<lt>span class=mwrightE<gt>";
+        $test = '[E<lt>a href="http://tapor.ualberta.ca/Tools/Dispatch/?tool=HyperPo';
+        $test .= '&delta_iLang=en&url=';
+        # You need the full URL since this is going as an argument.
+        $test .= "http://thyme.uchicago.edu/cgi-bin/xphilo/getrawdoc.pl?";
+        $test .= $SYSTEM_DIR . "." . $doc;
+        $test .= '" target=_blankE<gt>Analyze Document with HyperPoE<lt>/aE<gt>]E<lt>/spanE<gt>';
+        $txt .= $test;
+        $rtn .= $txt;
+        $rtn .= "E<lt>pE<gt>\n";
+return $rtn;
+} >
+
+Note that this requires a little cgi-bin function called getrawdoc.pl. We will not put this in the standard release package (I don't think), so install the following:
+
+C< 
+-----------------------START getrawdoc.pl-------------------------------
+#! /usr/bin/perl
+# This is just a mechanism to send a completely raw document to
+# a calling process.  I'm not giving out a file name since I want
+# to check to see if the file is in the docinfo and exists in the
+# TEXTS directory as a security precaution.
+$QS = $ENV{'QUERY_STRING'};
+($SYSTEM_DIR, $doc) = split ('\.', $QS);
+$i = $doc + 1;
+open (DOCINFO, $SYSTEM_DIR . "docinfo");
+   while ( $i-- ) {
+        $c = <DOCINFO >;
+    }
+close (DOCINFO);
+$filename = (split (" ", $c))[0];
+if (!$filename) {
+        print "Content-type: text/html; charset=UTF-8\n\n";
+        print "ERROR: No File";
+        exit;
+        }
+$pathfile = $SYSTEM_DIR . "TEXTS/" . $filename;
+if (open (RAWFILE, $pathfile)) {
+        print "Content-type: text/html; charset=UTF-8\n\n";
+        while (<RAWFILE >) {
+                print;
+        }
+}
+else {
+        print "Content-type: text/html; charset=UTF-8\n\n";
+        print "ERROR: No File";
+}
+--------------------END getrawdoc.pl------------------------------------
+ >
+Note that I am setting a standard Content Type.  This could be
+conditionalized by checking the kind of document you have, etc. 

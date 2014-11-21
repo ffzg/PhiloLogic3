@@ -1,0 +1,307 @@
+#!@PERL@ -T
+# -*- perl -*-
+# @configure_input@
+#
+# $Id: artfl_sortedkwic.pl.plin,v 1.2 2004/11/19 20:32:09 o Exp $
+#
+# philologic 2.8 -- TEI XML/SGML Full-text database engine
+# Copyright (C) 2004 University of Chicago
+# 
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the Affero General Public License as published by
+# Affero, Inc.; either version 1 of the License, or (at your option)
+# any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# Affero General Public License for more details.
+# 
+# You should have received a copy of the Affero General Public License
+# along with this program; if not, write to Affero, Inc.,
+# 510 Third Street, Suite 225, San Francisco, CA 94107 USA.
+
+$PHILOSITECFG = "${prefix}/etc/philologic";
+do "$PHILOSITECFG/dbnames";
+
+# 6 1 $HITLIST $dbname $KWSSPRLIM $KWSS
+
+$CONTEXT = $ARGV[0]; 
+$WORDS   = $ARGV[1]; 
+$hitsize = $CONTEXT * 2 + $WORDS * 4;
+$unpack = "s" . $CONTEXT . "l" . $WORDS;
+$hitlist = $ARGV[2];
+$dbname =  $ARGV[3];
+$KWSSPRLIM = $ARGV[4];
+$KWSS = $ARGV[5];
+$finish = 1000000;     # This is bad.....
+
+$hitlist =~ m/\.([0-9]*)$/;
+$resortpid = $1;
+
+$SYSTEM_DIR=$dbnames{"$dbname"};
+do "$PHILOSITECFG/philologic.cfg";
+unshift (@INC, $SYSTEM_DIR . "lib");
+require "philosubs.pl";
+
+if ($KWIC_RESORT_ON) {
+	print &KwicResortForm($resortpid);
+	}
+
+$PERL_HAS_UNICODE_STRING = eval { require Unicode::String; 1; };
+
+if (!$PERL_HAS_UNICODE_STRING) {
+    print "<p>" . $philomessage[208] . "</p>";
+}
+else {
+      use Unicode::String qw(utf8);
+}
+
+
+
+open (P, $SYSTEM_DIR . "pagemarks");
+@p = <P>;
+close (P);
+$|=1;
+
+if ($KWIC_REPORT_WIDTH) {
+	$REPORT_WIDTH = $KWIC_REPORT_WIDTH;
+	}
+else {
+	$REPORT_WIDTH = 80;  
+	}
+$half         = $REPORT_WIDTH / 2;
+if ($KWIC_REPORT_SHIFT) {
+	$kwic_center_off = $KWIC_REPORT_SHIFT;
+	}
+else {
+	$kwic_center_off = 0;
+	}
+$lhalf = $half - $kwic_center_off;
+$rhalf = $half + $kwic_center_off;
+if ($KWIC_REPORT_MAXHEAD) {
+	$maxhead = $KWIC_REPORT_MAXHEAD;
+	}
+else {
+	$maxhead      = 20;
+}
+
+$cntxt        = 300;
+
+$lastdoc      = -1;
+
+$CONTEXTUALIZER = "$PHILOCGI/contextualize.pl";
+$GETOBJECT      = "$PHILOCGI/getobject.pl";
+
+$hithighon_kwic =   "<b>" unless $hithighon_kwic;
+$hithighoff_kwic = "</b>" unless $hithighoff_kwic;
+ 
+$citefile       = "$SYSTEM_DIR/docinfo";
+
+open (TFILE, $citefile);
+while (<TFILE>) {
+      chop;
+      ($filename, $dl, $cite, $rest) = split (" ", $_, 4);
+      push (@filenames, $filename); 
+      push (@citebuffer, $cite);
+      push (@doclengths, $dl);
+      } 
+close TFILE;
+
+$thesortfile = $PHILOTMP . "/kwicsort." . $$;
+open (SORTED, "| sort > $thesortfile");
+
+open (TFILE, "$hitlist");
+
+if (defined ($start)) {
+    seek (TFILE, $start * $hitsize, 0);
+}
+
+while (($hit = &GetHit) && ($counter < $finish + 1)) {
+    @o = unpack ($unpack, $hit); 
+    undef (@index); 
+    for ($i = 0; $i < $CONTEXT; $i++) {
+          push (@index, shift (@o)); 
+       }
+    $doc = shift @index; 
+    $pc = pop @index;
+    push (@docs, $doc) if ($#docs < 0 || $docs[$#docs] != $doc); 
+    @o = sort numerically @o;
+
+    # page number:
+    $pagenum = $pc <= $p[0] ? $pc : $p[$pc - $p[0]]; 
+    $pagenum =~ s/[ \n]*$//;
+    #   Not expecting Unicode here, but I should add the Unicode 
+    #   length function.
+    $pagenum_length = length ($pagenum);
+
+    ###################
+    # Context:
+    ###################
+    # $lo and $ro -- left and right offsets;
+    # $ll and $rl -- left and right lengths;
+    # $dl -- total document length
+    $dl = $doclengths [$doc];
+    $lo = $o[0] - $cntxt;
+    $ro = $o[0]; # + $l;
+    $rl = ($o[$#o] + $cntxt > $dl) ? $dl - $ro : $o[$#o] + $cntxt - $ro;
+
+    # Some necessary corrections just in case we don't have enough context,
+    # for ex., if the word is at the very beginning of the document:
+  
+    $lo = $lo < 0 ? 0 : $rl < $cntxt ? ($lo - ($cntxt - $rl)) : $lo;
+    open (TEXT, $SYSTEM_DIR . "TEXTS/" . $filenames [$doc]); 
+    seek (TEXT, $lo, 0);
+    read (TEXT, $textbuffer, $ro + $rl - $lo);
+    $left = substr ($textbuffer, 0, $o[0] - $lo);
+    $left = &KwicFormat($left);
+
+    # Added in Unicode length and substring.  I'm only doing this for the
+    # left side at this time.  Lazy.  
+    if ($PERL_HAS_UNICODE_STRING) {
+	$nleft = utf8($left);
+	$left_length = $nleft->length;
+    } else {
+	$left_length = length($left);
+    }
+    $right = "";
+    $right_length = 0;
+    push (@o, $ro + $rl);
+    $i = 0;
+    while ( $i < $#o && $right_length < $rhalf ) {
+	    $span = substr ($textbuffer, $o[$i] - $lo, $o[$i+1] - $o[$i]);
+            $span = &KwicFormat($span);
+            # Should add Unicode length here.
+	    $span_length = length ($span);
+	    if ( $right_length + $span_length > $rhalf - 1 ) {
+		   $span = substr ( $span, 0, $rhalf - 1 - $right_length);
+	       }
+	    $right_length += ($span_length + 1);
+            $span = &KwicSpan($span);
+	    $right .= ( $hithighon_kwic . $span );
+	    $i++;
+	}
+    $counter++;
+    $title = &getKWICtitle("nocounter");
+    $title =~ s/<tt>[0-9]*\. /<tt>/;
+    if ($title_length + $left_length + $pagenum_length < $lhalf) {
+	$padding = ($lhalf - $title_length - $left_length - $pagenum_length);
+	# these two lines were replaced 7/13/2006 thanks to a patch from Michael Beddow
+	# there is a corresponding fix in artfl_kwic.plin
+	#$padding = "%-" . $padding . "s";
+	#$left = sprintf ($padding, $left);
+	$left =  "&nbsp;" x $padding . $left;
+    }
+    elsif ($title_length + $left_length + $pagenum_length > $lhalf) {
+	$leftsublen = -($lhalf - $title_length - $pagenum_length);
+	if ($PERL_HAS_UNICODE_STRING) {
+	    $left = $nleft->substr($leftsublen);        # Unicode substr
+	} else {
+	    $left = substr($left, -($lhalf - $title_length - $pagenum_length));
+	}
+    }
+      
+    $readytoprint = $title . "<tt>" . $left . $right . "</tt><br>\n";
+    $thissortkey = &MakeKwicSortKey($left, $right, $KWSS);
+
+    if ($KWIC_RESORT_ON) {
+	$copysortkey = $thissortkey;
+	$copysortkey =~ s/\t//;
+	if ($KWSS == 1) {
+	   ($resortword, $resortright, $resortleft) = split(/\|/, $copysortkey);
+	   }
+        else {
+	   ($resortword, $resortleft, $resortright) = split(/\|/, $copysortkey);
+	   }
+	$readytoprintcopy = $readytoprint;
+	$readytoprintcopy =~ s/\t//g;
+	$readytoprintcopy =~ s/\n//g;
+        $resortkey = $doc . "\t" . $resortword . " \t" . $resortright ;
+        $resortkey .= "\t" . $resortleft . "\t" . $readytoprintcopy;
+	push (@AllTheResortVals, $resortkey);
+    }
+
+    $thissortkey =~ s/\|/ /g;
+    $readytoprint = $thissortkey . $readytoprint;
+    print SORTED $readytoprint;
+}
+close (SORTED);
+open(SORTED, $thesortfile);
+$pcounter = 0;
+
+if ($KWSSPRLIM < $counter) {
+      print "<p>" . sprintf($philomessage[217], $KWSSPRLIM, $counter) . "<p>";
+      }
+while ($linein = <SORTED>) {
+	$pcounter++;
+	($key, $thishit) = split(/\t/, $linein);
+	#print $key . "|" ;
+	#print "<tt>$pcounter. </tt>";
+	print $thishit;
+	last if ($pcounter >= $KWSSPRLIM);
+	}
+close (SORTED);
+system ("rm -f $thesortfile");
+
+if ($KWSSPRLIM < $counter) {
+      print "<p>" . sprintf($philomessage[217], $KWSSPRLIM, $counter) . "<p>";
+            }
+
+
+if (!$OMITKWICSORTBIBLIOGRAPHY) {
+ 	print "<hr>\n<h2>" . $philomessage[209]. "</h2>";
+ 	for $doc (@docs) {
+     		$kwicbibline = &getbiblioLine ( $doc, "link" ) . "<p>\n";
+     		print $kwicbibline;
+     		if ($KWIC_RESORT_ON) {
+ 			if (defined (&KwicResortBibKey)) {
+ 			$biblioLineRead = &KwicResortBibKey($biblioLineRead);
+ 			}
+ 		$allkwicrawblines{$doc} = $biblioLineRead;
+ 		$allkwicbiblines .= $kwicbibline;
+		}
+	}
+}
+
+if ($KWIC_RESORT_ON) {
+	$RESULTS = "$PHILODATADIR/hitlists";
+	$resortbibfile = $RESULTS . "/kwicresortbib." . $resortpid;
+	open (RESORTBIB, ">$resortbibfile");
+	print RESORTBIB $allkwicbiblines;
+	close (RESORTBIB);
+	$resortdatafile = $RESULTS . "/kwicresortdata." . $resortpid;
+	open (RESORTDATA, ">$resortdatafile");
+	foreach $rsdataline (@AllTheResortVals) {
+		@results = split(/\t/, $rsdataline);
+		$thisbline = $allkwicrawblines{$results[0]};
+		$thisbline =~ s/\n//;
+		$rsdatalinenew = $results[1] . "\t";
+		$rsdatalinenew .= $results[2] . "\t";
+		$rsdatalinenew .= $results[3] . "\t";
+		$rsdatalinenew .= $thisbline . "\t";
+		$rsdatalinenew .= $results[4];
+		$rsdatalinenew =~ s/\t/\|/g;
+		print RESORTDATA $rsdatalinenew . "\n";
+		}
+	close (RESORTDATA);
+	}
+	
+
+##########################
+###   a few subs:
+##########################
+
+sub GetHit {
+    local($str);
+    read (TFILE, $bufstr, 1024 * $hitsize) unless $readinit % 1024;
+    $str = substr ($bufstr, $readinit++ % 1024 * $hitsize, $hitsize);
+    return $str;
+}
+
+sub TagTail {
+    local($database) = $_[0];
+    return $database . "." . join (".", @o);
+}
+
+sub numerically { $a <=> $b }
+

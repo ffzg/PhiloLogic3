@@ -1,0 +1,294 @@
+<html>
+<head>
+<title>@PACKAGE_STRING@ Default Search Page</title>
+<meta http-equiv=Content-Type content="text/html; charset=UTF-8">
+<style type="text/css">
+<!--
+     BODY {
+          FONT-FAMILY: arial, helvetica, sans-serif; FONT-SIZE: 14px;
+          LINE-HEIGHT: 1.2; 
+          }
+     td   {FONT-SIZE: 14px;}
+     span.bigger {FONT-SIZE: 20px; font-weight: bolder;}
+     span.big {FONT-SIZE: 16px; font-weight: bolder;}
+-->
+</style>
+
+<SCRIPT LANGUAGE="JavaScript">
+var cookiename = "PhiloLogicHistory";
+var philohist = "@cgi_url@/philohistory.pl?";
+
+function SetCookie(cookiename, thisid) {
+      document.cookie = cookiename + "=" + thisid +
+                        "; expires=01-01-2020" +
+                        "; path=/";
+      }
+
+function GetCookie (name) {
+        var arg = name + "=";
+        var alen = arg.length;
+        var clen = document.cookie.length;
+        var i = 0;
+        while (i < clen)
+                {
+                var j = i + alen;
+                if (document.cookie.substring(i, j) == arg)
+                        return getCookieVal (j);
+                i = document.cookie.indexOf(" ", i) + 1;
+                if (i == 0) break;
+                }
+        return null;
+        }
+
+function getCookieVal(offset) {
+        var endstr = document.cookie.indexOf (";", offset);
+        if (endstr == -1)
+        endstr = document.cookie.length;
+        return unescape(document.cookie.substring(offset, endstr));
+        }
+
+</SCRIPT>
+</head>
+<body aLink=#800000 bgColor=#ffffff link=#800000 text=#000000 vLink=#800000>
+<table align="center" width="95%">
+<tr><td>
+<center>
+<span class=bigger>@PACKAGE_STRING@ Default Search Page</center>
+</span>
+</td></tr>
+<tr><td>
+<hr align="left" width="640">
+<p>
+<span class=bigger>Search in Texts or Find Documents</span>
+
+<p>
+</td></tr></table>
+<form action="@cgi_url@/search3t">
+<table align="center" width="95%">
+  <tr>
+    <td width=238>&nbsp;&nbsp;&nbsp; </td>
+    <td width=738><input type=submit value=SEARCH>&nbsp;&nbsp;<input type=reset value=CLEAR></td></tr>
+  <tr>
+    <td width=238><b>Search in Texts for:</b> </td>
+
+    <td width=738><input name=word size=28> (e.g., <i>charlemagne</i>) 
+    <input type="checkbox" name="SIMWORD" value="ON"> Similar Word Search
+</td></tr>
+<tr><td width=238>&nbsp;&nbsp;&nbsp; </td>
+    <td width=730><input type="text" name="dbname" value="ENTER SOMETHING"></td>
+</tr>
+  <tr>
+    <td width="238"></tr></table>
+<table align="center" width="95%">
+  <tr>
+    <td width=760>Note: For pattern matching one may employ wildcard 
+      characters (e.g., <i>widow*</i> retrieves widow, widowe, 
+widowhood, etc.).  To search without considering diacritics turn on 
+"Caps Lock" and type in all uppercase (e.g., <i>NAIVETE</i> finds 
+both naivete and na&iuml;vet&eacute;).  Selecting similar word search
+applies to all words in the database.
+    </td></tr></table>
+<table align="center" width="95%">
+  <tr>
+	      <td><span class="big">&sect; Select a Search Option:</span><br>
+<input CHECKED name=CONJUNCT type=radio 
+      value=PHRASE> Single Term and Phrase Search (default)
+<input name=CONJUNCT type=radio value=PROXY>Phrase separated
+ by <input name=DISTANCE size=2
+      value=2> words <select name=PROXY> <option selected>or
+        fewer<option>exactly</option></select><br>
+<input 
+      name=CONJUNCT type=radio value=6> Proximity Searching in the same Sentence or <input name=CONJUNCT 
+      type=radio value=5> in the same Paragraph<br>
+<span class=big>&sect; Select a Results Format:</span>
+<input CHECKED name=OUTPUT type=radio value=conc> Occurrences with Context (default) &nbsp;&nbsp; <input name=OUTPUT 
+type=radio value=kwic> Occurrences Line by Line
+
+  </td></td></tr></table>
+<table align="center" width="95%">
+  <tr>
+<td><span class=big>&sect; Limit your search by the following fields:</span>
+(Uppercase AND, OR, and NOT serve as Boolean 
+      operators.) </td></tr></table>
+
+<table align="center" width="95%">
+  <tr>
+    <td width=239 height="8"><b>Author:</b> 
+    </td>
+
+    <td width=737 height="8"><input name=author size=35> 
+<input name=xxbrowseauthor type=submit value=Terms> 
+(e.g., Chaucer, Geoffrey) </td></tr>
+<tr>  
+    <td width=239 height="23"><b>Title:</b> </td>
+    <td width=737 height="23"><input name=title size=35>
+<input name=xxbrowsetitle type=submit value=Terms>
+(e.g., Ploughman's tale)
+  </td></tr>
+  <tr>
+    <td width=239 height="23"><b>Date:</b> </td>
+
+    <td width=737 height="23"><input name=date size=20> 
+  (e.g., 1535 or 1510-1590) 
+</td></tr>
+  <tr>
+    <td width=239 height="23"><b>Publisher:</b> </td>
+    <td width=737 height="23"><input name=publisher size=35>
+<input name=xxbrowsepublisher type=submit value=Terms>
+(e.g., J. Waylande)
+  </td></tr>
+<tr> 
+    <td width=239 height="23"><b>Place of Publication:</b> </td> 
+    <td width=737 height="23"><input name=pubplace size=35> 
+<input name=xxbrowsepubplace type=submit value=Terms> 
+(e.g., London) 
+  </td></tr> 
+
+<tr>
+    <td width=239 height="23"><b>Subject:</b> </td>
+    <td width=737 height="23"><input name=keywords size=35>
+<input name=xxbrowsekeywords type=submit value=Terms>
+(e.g., Philosophy, Ancient)
+  </td></tr>
+<tr> 
+    <td width=239 height="23"><b>Notes:</b> </td> 
+    <td width=737 height="23"><input name=sourcenote size=35> 
+<input name=xxbrowsesourcenote type=submit value=Terms> 
+(e.g., badly mutilated) 
+
+</td></tr> 
+  <tr>
+    <td width=239 height="23"><b>Title ID:</b> </td>
+    <td width=737 height="23"><input name=shrtcite size=35> 
+<input name=xxbrowseshrtcite type=submit value=Terms>
+  (e.g., A18566) </td></tr>
+  <tr>
+    <td width=239 height="27">&nbsp;&nbsp;&nbsp; </td>
+
+    <td width=737 height="27"><input type=submit value=SEARCH>&nbsp;&nbsp;<input type=reset value=CLEAR> 
+    </td></tr></table>
+
+<table align="center" width="95%">
+<tr><td>
+One may also use the bibliographic fields on their own to find documents and sort the results.<br> 
+Sort bibliographic searches only by: 
+<select name=sortorder size=1> 
+<option Value="author, title">Author, Title</option>
+<option Value="author, date">Author, Year of Publication</option>
+<option Value="title, author">Title, Author</option>
+<option Value="date, author">Year of Publication, Author</option>
+</select>
+<p><span class=big>&sect; Refined Search Results:</span><br>
+
+&nbsp;<input TYPE="radio" NAME="OUTPUT" VALUE="TF">
+Frequency by Title
+
+&nbsp;&nbsp;<input TYPE="radio" NAME="OUTPUT" VALUE="TFRATE">
+Frequency by Title per 10,000<br>
+
+&nbsp;<input name=OUTPUT type=radio 
+value=AF> Frequency by Author
+<input type="radio" name="OUTPUT" value="AFRATE">
+Frequency by Author per 10,000
+[Check <input TYPE="checkbox" NAME="AFTITLEDISP" VALUE="OFF"> to 
+hide titles]
+<br>
+
+&nbsp;<input name=OUTPUT type=radio value=DF> 
+Frequency by Years
+&nbsp;<input type="radio" name="OUTPUT" value="DFRATE">
+Frequency by Years per 10,000<br> 
+&nbsp; &nbsp; &nbsp; Select Year Group  <select name="DFPERIOD">
+               <option value="0">Year</option>
+               <option selected value="1">Decade</option>
+               <option value="2">Quarter Cent.</option>
+               <option value="3">Half Cent.</option>
+               <option value="4">Century</option>
+               </select>
+&nbsp;[Check <input TYPE="checkbox" NAME="DFTITLEDISP" VALUE="OFF"> to
+hide titles]
+<br>
+
+&nbsp;<input TYPE="radio" NAME="OUTPUT" VALUE="PF">
+Collocation Table
+Spanning 
+
+<select name=POLESPAN> 
+<option>10
+<option>9
+<option>8
+<option>7
+<option>6
+<option selected>5
+<option>4
+<option>3
+<option>2
+<option>1</option></select> 
+words.
+Turn Filter Off: <input TYPE="checkbox" NAME="POLEFILTER" VALUE="OFF"> 
+Filtered Words
+<br> 
+&nbsp;<input type="radio" name="OUTPUT" value="THMRHM">
+Word in Clause Position (Theme-Rheme) 
+&nbsp; Display Options: 
+<select name="THMPRTLIMIT">
+               <option value="1">Front of Clause Only</option>
+               <option value="2">Front and Last Only </option>
+               <option value="3">Front, Last, Middle</option>
+               <option value="4">Full Report</option>
+               </select>
+<br>
+&nbsp;<input type="radio" name="OUTPUT" value="SORTEDKWIC">
+Line by Line (KWIC) Sorted by keyword
+and word to its
+<select name="KWSS">
+<option value="1" selected>Right</option>
+<option value="2">Left</option>
+</select>
+Display up to
+<select name="KWSSPRLIM">
+<option value="500" selected>500</option>
+<option value="1000">1000</option>
+
+<option value="2000">2000</option>
+<option value="5000">5000</option>
+<option value="10000">10000</option>
+</select>
+occurrences.
+<br>
+&nbsp;<input type="checkbox" name="SIMWORD" value="ON">
+  Word Similarity (Entering <i>mystery</i> finds mysterye, mystory, etc.; a word must be of 5 characters or more.)<br>
+Return to: <input name=OUTPUT type=radio value=conc> Occurrences with Context&nbsp; or <input name=OUTPUT 
+type=radio value=kwic> Occurrences Line by Line
+
+<SCRIPT LANGUAGE="JavaScript">
+    var thisid = GetCookie(cookiename);
+    if (thisid == null) {
+        var n = Math.random();
+        var x = n.toString();
+        var p = x.replace(/\./, "9");
+        thisid = p.substr(2,10);
+        SetCookie(cookiename, thisid);
+    }
+    document.write('<span class=big><br><br>&sect; Saving Search History:</span> ');
+    document.write('Users may save their searches by checking this box ');
+    document.write('<input type=\"checkbox\" name=\"KEEPHISTORY\"' +
+                    'value=\"' + thisid + '\"> <br>');
+    document.write('and return at any time to '); 
+    document.write(' <a href=\"' + philohist + 'HISTORYFILE=' +
+                     thisid + '\">Open Saved Searches</a> ');
+    document.write(' provided they are using the same machine. <p>');
+</SCRIPT>
+
+</form>
+<hr>
+<center>
+<a href="http://philologic.uchicago.edu/powered">
+<img border="0" src="http://philologic.uchicago.edu/philopowered.png" 
+alt="Powered by PhiloLogic"></a>
+</center>
+<p>
+</td></tr></table>
+
+</body>
+</html>

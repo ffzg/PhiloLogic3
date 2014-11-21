@@ -1,0 +1,79 @@
+#!/usr/bin/perl
+#
+# This is a word exploder primarily for dirty OCR applications.
+# Once you load your database, copy this in place of "crapser".
+# It will force similiarity searches.  Note that this assumes that
+# you have agrep in a place that is specified below and that you
+# have gawk, again specified below.  You may also need to set the call
+# to perl above to the right place.  This will take our standard
+# uppercase letters to represent accents.  Tune the flexiblity of
+# the search below.
+
+%ACCENTS = ( 'A',       "(a|\xc3\xa0|\xc3\xa1|\xc3\xa2|\xc3\xa3|\xc3\xa4)",
+             'C',       "(c|\xc3\xa7)",
+             'E',       "(e|\xc3\xa8|\xc3\xa9|\xc3\xaa|\xc3\xab)",
+             'I',       "(i|\xc3\xac|\xc3\xad|\xc3\xae|\xc3\xaf)",
+             'N',       "(n|\xc3\xb1)",
+             'O',       "(o|\xc3\xb2|\xc3\xb3|\xc3\xb4|\xc3\xb4|\xc3\xb6)",
+             'U',       "(u|\xc3\xb9|\xc3\xba|\xc3\xbb|\xc3\xbc)",
+             'Y',       "[y\375\377]"   );   # BAD
+
+# This does not apply....
+$DOTPATTERN = "([a-zA-Z0-9]|[\xa0-\xc3][\xa0-\xc3])";
+
+# Should be reading one pattern at a time.  
+while (<>) {
+	chop;
+# postfix to ISO: This should be completely obsolete and caught
+# much earlier in search3t.  I'm leaving it just in case of something
+# rather odd, but it probably will not work.
+
+    s/a\//\341/g;
+    s/a\\/\304/g;
+    s/a^/\342/g;
+    s/c\,/\347/g;
+    s/e\"/\352/g;
+    s/e\\/\350/g;
+    s/e\//\351/g;
+    s/e^/\352/g;
+    s/i\\/\354/g;
+    s/i\//\355/g;
+    s/i\"/\357/g;
+    s/i^/\356/g;
+    s/o^/\364/g;
+    s/u\//\374/g;
+    s/u\\/\371/g;
+    s/u^/\373/g;
+
+# A long time ago we had a proper name tag.  We now get so few of
+# these that it has fallen out of use.  We can probably add it
+# back in as one point.
+    $prefix = /^\256\?/ ? "\256\?" : /^\256/ ? "\256" : "";
+    s/^\256\?*//;
+	
+    @patterns = split('\|', $_);
+    foreach $w (@patterns) {
+	$w =~ tr/A-Z/a-z/;
+# You can guess about flex values here.  agrep is very simple.
+	$flexvalue = 0;
+             if (length($w) > 6) {
+                 $flexvalue = 1;
+                 if (length($w) > 9) {
+                     $flexvalue = 2;
+                     } 
+                 if (length($w) > 14) { 
+                     $flexvalue = 3; 
+                     }
+		  }
+
+# Note that I am using a search across both fields.  If you have done
+# something, like flattened accents, in words.R.wom, you may get better
+# matching.  Remember that the idea here is broader searching, so the
+# more the merrier. 
+
+        system ("/usr/bin/agrep -w -i -$flexvalue \"$w\" < " . $ENV{SYSTEM_DIR} . "words.R.wom" . " | /usr/bin/gawk -F\"\t\" '{print \$2}' ");
+
+     }
+ }
+
+# And that is it.  

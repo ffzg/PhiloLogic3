@@ -1,0 +1,23 @@
+# $Id: make_wom_words.R.plin,v 2.1 2004/08/23 21:45:03 o Exp $
+while (<>) {
+	chop;
+	$index_form = $_;
+	$search_form = $_;
+	$search_form =~ s/\&lsb;//g;
+	$search_form =~ s/\&rsb;//g;
+	$search_form =~ s/\&lcb;//g;
+	$search_form =~ s/\&rcb;//g;
+	$search_form =~ s/\&lpn;//g;
+	$search_form =~ s/\&rpn;//g;
+	$search_form =~ s/\&rpar;//g;
+	$search_form =~ s/\&lpar;//g;
+	$search_form =~ s/\&lt;//g;
+	$search_form =~ s/\&gt;//g;
+	$search_form =~ s/\&\#171;//g;
+	$search_form =~ s/\&\#187;//g;
+	$search_form =~ s/\&\#183;//g;
+	$search_form =~ s/&([a-zA-Z])[^;]*;/$1/g;
+#	$search_form =~ s/'//g;
+	$lineout = $search_form . "\t" . $index_form . "\n";
+	print $lineout;
+	}

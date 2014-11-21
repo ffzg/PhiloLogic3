@@ -1,0 +1,324 @@
+#!@PERL@ -T
+# -*- perl -*-
+# @configure_input@
+#
+# $Id: artfl_conc.pl.plin,v 2.10 2004/05/28 18:43:02 o Exp $
+#
+# philologic 2.8 -- TEI XML/SGML Full-text database engine
+# Copyright (C) 2004 University of Chicago
+# 
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the Affero General Public License as published by
+# Affero, Inc.; either version 1 of the License, or (at your option)
+# any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# Affero General Public License for more details.
+# 
+# You should have received a copy of the Affero General Public License
+# along with this program; if not, write to Affero, Inc.,
+# 510 Third Street, Suite 225, San Francisco, CA 94107 USA.
+
+$PHILOSITECFG = "@sysconfdir@/philologic";
+do "$PHILOSITECFG/dbnames";
+
+$hitsize = $ARGV[0] * 2 + $ARGV[1] * 4;
+$unpack = "s" . $ARGV[0] . "l" . $ARGV[1];
+
+$hitlist = $ARGV[2];
+
+if ( $#ARGV == 5 )
+{
+   $start = $ARGV[3]; 
+   $finish = $ARGV[4]; 
+   $mvocounter = $start;
+   $dbname = $ARGV[5];
+}
+else 
+{
+   $finish = 1000000;
+   $mvocounter = 0;
+   $dbname = $ARGV[3];
+}
+
+$SYSTEM_DIR=$dbnames{"$dbname"};
+
+do "$PHILOSITECFG/philologic.cfg";
+
+unshift (@INC, $SYSTEM_DIR . "/lib");
+
+require "$SYSTEM_DIR/lib/philosubs.pl";
+
+
+open (P, $SYSTEM_DIR . "pagemarks");
+@p = <P>;
+
+$|=1;
+
+$BLOCKSIZE = 2048;
+$cntxt = $CONC_CONTEXT || 300;
+
+$lastdoc = -1;
+
+$CONTEXTUALIZER = "$PHILOCGI/contextualize.pl";
+$GETOBJECT = "$PHILOCGI/getobject.pl";
+
+$hithighon_conc =   "<b>" unless $hithighon_conc;
+$hithighoff_conc = "</b>" unless $hithighoff_conc;
+ 
+$citefile="$SYSTEM_DIR/docinfo";
+
+open (TFILE, $citefile);
+
+while (<TFILE>) 
+  {
+      chop;
+      ($filename, $dl, $cite, $rest) = split (" ", $_, 4);
+      push (@filenames, $filename); 
+      push (@citebuffer, $cite);
+      push (@doclengths, $dl);
+  } 
+
+close TFILE;
+
+
+
+
+open (TFILE, "$hitlist");
+
+if ( defined ( $start ) ) 
+{
+    seek (TFILE, $start * $hitsize, 0);
+}
+
+# removed titles generator startup
+
+while ( ($hit = &GetHit) && ($mvocounter < $finish + 1) ) 
+  {
+
+
+    @o = unpack ($unpack, $hit); 
+
+    @index = (); 
+
+    for ( $i = 0; $i < $ARGV[0]; $i++ )
+       {
+          push (@index, shift (@o)); 
+       }
+
+   $doc = shift @index; 
+   $pc = pop @index;
+ 
+
+   if ( $#docs < 0 || $docs[$#docs] != $doc ) 
+   {
+       push ( @docs, $doc ); 
+   }
+
+
+    @o = sort numerically @o;
+
+# page number:
+    $pagenum = $pc <= $p[0] ? $pc : $p[$pc - $p[0]]; 
+
+
+    ###################
+    #
+    # Context:
+    #
+    ###################
+
+    #
+    # $lo and $ro -- left and right offsets;
+    # $ll and $rl -- left and right lengths;
+    # $dl -- total document length
+    #
+
+	$dl = $doclengths [$doc];
+
+	$lo = $o[0] - $cntxt;
+	$ro = $o[0]; # + $l;
+        $rl = ($o[$#o] + $cntxt > $dl) ? $dl - $ro : $o[$#o] + $cntxt - $ro;
+
+
+# Some necessary corrections just in case we don't have enough context,
+# for ex., if the word is at the very beginning of the document:
+  
+        $lo = $lo < 0 ? 0 : $rl < $cntxt ? ($lo - ($cntxt - $rl)) : $lo;
+
+	open (TEXT, $SYSTEM_DIR . "TEXTS/" . $filenames [$doc]); 
+
+	seek (TEXT, $lo, 0);
+	read (TEXT, $textbuffer, $ro + $rl - $lo);
+
+        undef (@spans);
+
+        $left = substr ($textbuffer, 0, $o[0] - $lo);
+
+        for ( $i = 0; $i < $#o; $i++ ) {
+	   $span = substr ($textbuffer, $o[$i] - $lo, $o[$i+1] - $o[$i]);
+	   if (defined(&ConcSpan)) {
+		$span = &ConcSpan($span);
+	        }
+	   else {
+  		 $span =~ s:([<\.\'\ \?\n\-;&,\!]):$hithighoff_conc$1:; 
+	        }
+	   push (@spans, $span);
+	}
+
+        $span = substr ($textbuffer, $o[$#o] - $lo, $ro + $rl - $o[$i]);
+           if (defined(&ConcSpan)) {
+                $span = &ConcSpan($span);
+                }
+           else {
+                 $span =~ s:([<\.\'\ \?\n\-;&,\!]):$hithighoff_conc$1:;
+                }
+	push (@spans, $span);
+        unshift (@spans, $left);
+
+        for ( $spn = 0; $spn <= $#spans; $spn++ ) {
+	     $spans[$spn] =~ s/<[bB]>//g; 
+             }
+
+    $text = join ($hithighon_conc, @spans);
+
+    if (defined(&ConcFormat)) {
+	$text = &ConcFormat($text);
+    }
+    else {
+	$text = &Transform ($text);
+    }
+
+
+    $tagtail = &TagTail ($dbname);
+
+    $hitlist =~ s:^.*/hitlist.::g;
+
+
+# HREF tag for page object:
+
+    if ( !$ChainLinksRestricted )
+    {
+	$href = "<A HREF=\"" . $CONTEXTUALIZER . "?p." . $doc . "." . $tagtail . "\">";
+    }
+    else
+    {
+	$href = "<A HREF=\"" . $CONTEXTUALIZER . "?p." . $hitlist . "." . 
+	    $dbname . "." . $mvocounter . "." . $ARGV[0] . "." . 
+		$ARGV[1] . ".0\">";
+    }
+
+# for now, we are going to give them links to h1, h2 and paragraph
+
+
+    $hier = "";
+
+    for ( $i = 0; $i < $ARGV[0] - 2; $i++ )
+    {
+	$hier .= ":$index[$i]";
+
+
+	if ( $index[$i] == -1 )
+	{
+	    $ohref[$i] = "";
+	}	
+	else
+	{
+	    unless ( $ChainLinksRestricted )
+	    {
+		$ohref[$i] = "<A HREF=\"" . $GETOBJECT . "?c." . $doc . $hier . "." . $tagtail . "\">";
+	    }
+	    else
+	    {
+		$ohref[$i] = "<A HREF=\"" . $GETOBJECT . "?c" . ($i + 1) . "." . 
+		    $hitlist . "." . $dbname . "." . $mvocounter . "." . $ARGV[0] . 
+			"." . $ARGV[1] . ".0\">";
+	    }
+	}
+    }
+
+    print "<hr>\n";
+
+
+    $mvocounter++;
+
+    print $mvocounter . ". ";
+	
+    $pagenum =~ s/\n//;
+
+    print &concheadline ( $citebuffer[$doc], $pagenum, $href, @ohref ); 
+
+    print "\n<p>" . $text . "</i>\n<p>\n";
+ 
+}
+
+if (!$OMITCONCBIBLIOGRAPHY) {
+	print "<hr><h2>" . $philomessage[209] . "</h2>\n";
+	for $doc (@docs) {
+     		print &getbiblioLine ( $doc, "link" ) . "<p>\n";
+ 	}
+ }
+
+
+sub Transform {
+    local($bf) = $_[0];
+
+    $bf=~s/ ([?,;:!\.\-])/$1/g;
+# MVO March 15 -- commented out following line.  All of this needs to
+# go into philosubs
+#    $bf=~s/\' /\'/g;
+    $bf =~ s/\&dot;/\./gi;
+
+# chopped words at the beginning and the end
+
+    $bf =~ s/^[^ \n]*[ \n]// if $lo;
+    $bf =~ s/[^ \n]*$// unless $ro + $rl == $dl;
+
+    $bf=~s/^[^<]*>//;
+    $bf=~s/<[^>]*$//;
+
+
+# l.a. -- added the following crap; should be in format.ph!
+
+    $bf=~s:</*[hH][1-3]>::g;
+    $bf=~s:<[hH][rR]>::g;
+    $bf=~s:<[bB][rR]><[bB][rR]>::g;
+    $bf=~s:</*[pP]>::g;
+    $bf=~s:</*center>::g;
+    $bf=~s:</*CENTER>::g;
+    $bf=~s:</*[tT][aA][bB][lL][eE]>::g;
+
+#    $bf=~s:<[bB]>::g;
+
+    $bf .= "</ul>" if $bf =~ /<[uU][lL]>/;
+    $bf .= "</i>" if $bf =~ /<[iI]>/;
+
+
+    return $bf;
+}
+
+
+sub GetHit {
+    local($str);
+ 
+    read (TFILE, $bufstr, 1024 * $hitsize) unless $readinit % 1024;
+
+    $str = substr ($bufstr, $readinit++ % 1024 * $hitsize, $hitsize);
+    return $str;
+}
+
+
+sub TagTail {
+local ($database) = $_[0];
+
+    return $database . "." . join (".", @o);
+}
+
+sub numerically { $a <=> $b }
+
+
+
+
+

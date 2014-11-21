@@ -1,0 +1,36 @@
+# $Id: Makefile.in,v 2.12 2004/08/23 21:45:03 o Exp $
+SCRIPTS = philoload philosearch.html philologic.cfg nserver
+SOURCES = philoload.plin philosearch.html.in philologic.cfg.in nserver.in Makefile.in dbnames
+
+all: philoload.plin philosearch.html.in nserver.in
+	../config.status --file=philoload:philoload.plin
+	../config.status --file=philosearch.html:philosearch.html.in
+	../config.status --file=philologic.cfg:philologic.cfg.in
+	../config.status --file=nserver:nserver.in
+
+install: all
+	@INSTALL@ philoload @bindir@
+	@INSTALL@ -d -g @authuser_group@ -m u=rwx,g=rwx,o=rx @sysconfdir@/philologic/
+	@INSTALL@ -g @authuser_group@ -m u=rwx,g=rwx,o=rx philosearch.html @web_path@
+	@INSTALL@ -g @authuser_group@ -m u=rwx,g=rwx,o=rx philopowered.png @web_path@
+	@INSTALL@ -g @authuser_group@ -m u=rwx,g=rwx,o=rx philo_white.png @web_path@
+	@INSTALL@ -g @authuser_group@ -m u=rwx,g=rwx,o=rx moo.ajax.js @web_path@
+	@INSTALL@ -g @authuser_group@ -m u=rwx,g=rwx,o=rx prototype.lite.js @web_path@
+	@INSTALL@ -g @authuser_group@ -m u=rwx,g=rwx,o=rx notes.js @web_path@
+	@INSTALL@ -g @authuser_group@ -m u=rwx,g=rwx,o=rx philologic.cfg @sysconfdir@/philologic/
+	@INSTALL@ -g @authuser_group@ -m u=rwx,g=rwx,o=rx dbnames @sysconfdir@/philologic/
+	@INSTALL@ -d -g @authuser_group@ -m u=rwx,g=rwx,o=rx @localstatedir@/lib/philologic/etc/
+	@INSTALL@ $(SOURCES) @localstatedir@/lib/philologic/etc/
+#	@INSTALL@ nserver @init_d@
+	@NSERVER_INSTALL@
+#	@LN_S@ -f @init_d@/nserver @boot_init_d@/S99nserver
+	@NSERVER_ACTIVATE@
+	@INSTALL@ -d @localstatedir@/lib/philologic/init.d
+
+
+clean:
+	rm -f $(SCRIPTS)
+
+dist-clean: clean
+
+distclean: dist-clean

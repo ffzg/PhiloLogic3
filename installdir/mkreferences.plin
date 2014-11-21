@@ -1,0 +1,22 @@
+# $Id: mkreferences.plin,v 2.1 2004/08/23 21:45:03 o Exp $
+if ( $#ARGV != 0 ) {
+    print STDERR "usage mkreferences: PATH\n";
+    exit 1;
+}
+
+$PREFIX = shift @ARGV; 
+$lastdocid = 99999;
+
+while ($linein = <>) {
+    @results = split('\t', $linein);
+    $docid = $results[0]; 
+
+    if ($docid != $lastdocid) {
+	    $tmpf = ">" . $PREFIX . "/" . $docid;
+	    close (OUT);
+	    open OUT, $tmpf;
+	    $lastdocid = $docid; 
+	    }
+    print OUT $linein; 
+}
+

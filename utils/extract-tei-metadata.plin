@@ -1,0 +1,547 @@
+# $Id: extract-tei-metadata.plin,v 2.1 2004/08/23 21:45:03 o Exp $
+
+# philologic 2.8 -- TEI XML/SGML Full-text database engine
+# Copyright (C) 2004 University of Chicago
+# 
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the Affero General Public License as published by
+# Affero, Inc.; either version 1 of the License, or (at your option)
+# any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# Affero General Public License for more details.
+# 
+# You should have received a copy of the Affero General Public License
+# along with this program; if not, write to Affero, Inc.,
+# 510 Third Street, Suite 225, San Francisco, CA 94107 USA.
+
+# ==============================================================
+# Experimental TEI XML and SGML metadata extractor. 
+
+$ENDTAG = "<\/teiheader>";
+
+# Read in a file from argv having the DOCID and then the
+# filename.  This is generated.  You can run a debugging routine
+# to output words, tags and the raw index
+
+$TEXTDIR = $ARGV[0];
+$filelist = $ARGV[1];
+
+if ($ARGV[2] eq "-debug") {
+        $debug = 1;
+	}
+
+# Read in the list of files
+
+chomp($filelist);
+open FILEINTXT, "$filelist";
+while ($filename = <FILEINTXT>) {
+   $filename =~ s/\n//g;
+
+# Put the whole XML document header as a string.
+   $thewholething = "";
+   $pathandfile = $TEXTDIR . "/" . $filename;
+   open (THEXMLFILE, $pathandfile); 
+   while ($inline = <THEXMLFILE>) {
+        $thewholething .= $inline;
+        last if ($inline =~ /$ENDTAG/i);        
+        }
+   close (THEXMLFILE);
+   $filesize = -s("$pathandfile");
+
+$inline =~ s/\n//;
+
+# If debug, let the user know this is the offender
+if ($debug) {
+	print STDERR "Extracting metadata from $filename = $filesize\n";
+}
+
+#  Replace  DOS <CR> characters with spaces since they can 
+#  give us all kinds of difficulties.
+   $thewholething =~ s/\015/ /g;
+
+# Then let's split the tags out with newlines and put it all 
+# in a list.
+
+   $thewholething =~ s/\n/ /g;
+   $thewholething =~ s/</\n</g;
+   $thewholething =~ s/>/>\n/g;
+   $thewholething =~ s/\t/ /g;
+   
+   @INSTREAM = split(/\n/, $thewholething);  
+
+   $thewholething = ""; 
+
+   $bytesreadin = 0;
+   $inlinecount = 0;
+   foreach $inline (@INSTREAM) {
+# This is debugging code
+        if ($debug) {
+                print "$inline\n";
+                }
+# End of debugging code
+        $inlinecount += 1;
+        if ($inline =~ /</) {
+                &taghandler($inline)
+                }
+        else {
+                &wordhandler($inline);
+        }
+    } 
+
+    &recordbuilder();
+    $recordwithkey = $thesortkey . "\t" . $theoutrecord;
+    push (@thebibliolist, $recordwithkey);
+}
+
+# ================= END OF THE FILES =============================
+
+$documentcounter = 0;
+@sortlist = sort @thebibliolist;
+
+foreach $bibline (@sortlist) {
+# Strip the sort key    
+        $bibline =~ s/^[^\t]*\t//;
+# Delete the newline
+        $bibline =~ s/\n//;
+# Add the documentcounter
+        $bibline .= "\t" . $documentcounter . "\n";
+        $documentcounter += 1;
+# And print it.
+        print $bibline;
+        }
+
+# ========================== Subroutines ==============================
+
+sub taghandler() { 
+local ($thetag);
+$thetag = $_[0];
+
+# Identify which top level tags you are in ... by setting some flags.
+
+	if ($thetag =~ /<fileDesc>/i) {
+		$FILEDESC = 1;
+		}
+        if ($thetag =~ /<\/fileDesc>/i) {
+                $FILEDESC = 0;
+                }
+        if ($thetag =~ /<sourcedesc>/i) {
+                $SOURCEDESC = 1;
+                }
+        if ($thetag =~ /<\/sourcedesc>/i) {
+                $SOURCEDESC = 0;
+                }
+        if ($thetag =~ /<profiledesc>/i) {
+                $PROFILEDESC = 1;
+                }
+        if ($thetag =~ /<\/profiledesc>/i) {
+                $PROFILEDESC = 0;
+                }
+
+# ======================= In FILEDESC ============================
+# Then process tag pairs you want in the FILEDESC but not in 
+# SOURCEDESC (which is a part of FILEDESC)
+
+	if ($FILEDESC && !$SOURCEDESC) {
+# Author/End Author
+                if ($thetag =~ /<author>/i) {
+                    $currentwords = "";
+                    $FAUTHOR = 1;
+                    }
+                if ($thetag =~ /<\/author>/i && $FAUTHOR) {
+                    $filedescauthor .= $currentwords . " ";
+                    $currentwords = "";
+                    $FAUTHOR = 0;
+                    }
+# Title/End Title
+                if ($thetag =~ /<title[> ]/i) {
+                    $currentwords = "";
+                    $FTITLE = 1;
+                    }
+                if ($thetag =~ /<\/title>/i && $FTITLE) {
+                    $filedesctitle .= $currentwords . " ";
+                    $currentwords = "";
+                    $FTITLE = 0;
+                    }
+# Publisher
+                if ($thetag =~ /<PUBLISHER>/i) {
+                    $currentwords = "";
+                    $FPUBLISHER = 1;
+                    }
+                if ($thetag =~ /<\/PUBLISHER>/i && $FPUBLISHER) {
+                    $filedescpublisher .= $currentwords . " ";
+                    $currentwords = "";
+                    $FPUBLISHER = 0;
+                    }
+# Pubplace
+                if ($thetag =~ /<PUBPLACE>/i) {
+                    $currentwords = "";
+                    $FPUBPLACE = 1;
+                    }
+                if ($thetag =~ /<\/PUBPLACE>/i && $FPUBPLACE) {
+                    $filedescpubplace .= $currentwords . " ";
+                    $currentwords = "";
+                    $FPUBPLACE = 0;
+                    }
+# DATE
+                if ($thetag =~ /<DATE>/i && !$FTITLE) {
+                    $currentwords = "";
+                    $FDATE = 1;
+                    }
+                if ($thetag =~ /<\/DATE>/i && $FDATE) {
+                    $filedescdate .= $currentwords . " ";
+                    $currentwords = "";
+                    $FDATE = 0;
+                    }
+# IDNO 
+                if ($thetag =~ /<IDNO>/i) {
+                    $currentwords = "";
+                    $FIDNO = 1;
+                    }
+                if ($thetag =~ /<\/IDNO>/i && $FIDNO) {
+                    $filedescidno .= $currentwords . " ";
+                    $currentwords = "";
+                    $FIDNO = 0;
+                    }
+
+
+        }
+
+
+# ======================= In SOURCEDESC ==========================
+# Then process tag pairs you want in the SOURCEDESC  by prejudice
+# this will be what ARTFL is most interested in.
+# For neatness, these could be subroutines....
+
+	if ($SOURCEDESC) {
+
+# Author/End Author
+#                if ($thetag =~ /<name>/i) {
+#		    $currentwords = "";
+#                   $AUTHOR = 1;
+#		    }
+#        	if ($thetag =~ /<\/name>/i && $AUTHOR) {
+#		    $sourceauthor .= $currentwords . " ";
+#		    $currentwords = "";
+#              	    $AUTHOR = 0;
+#		    }
+# Author/End Author
+                if ($thetag =~ /<author/i) {
+                    $currentwords = "";
+                    $AUTHOR = 1;
+                    }
+                if ($thetag =~ /<\/author>/i && $AUTHOR) {
+                    $sourceauthor .= $currentwords . " ";
+                    $currentwords = "";
+                    $AUTHOR = 0;
+                    } 
+# Title/End Title
+        	if ($thetag =~ /<title[> ]/i) {
+                    $currentwords = "";
+                    $TITLE = 1;
+                    }
+        	if ($thetag =~ /<\/title>/i && $TITLE) {
+                    $sourcetitle .= $currentwords . " ";
+                    $currentwords = "";
+                    $TITLE = 0;
+                    }
+# Publisher
+                if ($thetag =~ /<PUBLISHER>/i) {
+                    $currentwords = "";
+                    $PUBLISHER = 1;
+                    }
+                if ($thetag =~ /<\/PUBLISHER>/i && $PUBLISHER) {
+                    $sourcepublisher .= $currentwords . " ";
+                    $currentwords = "";
+                    $PUBLISHER = 0;
+                    }
+# Pubplace
+                if ($thetag =~ /<PUBPLACE>/i) {
+                    $currentwords = "";
+                    $PUBPLACE = 1;
+                    }
+                if ($thetag =~ /<\/PUBPLACE>/i && $PUBPLACE) {
+                    $sourcepubplace .= $currentwords . " ";
+                    $currentwords = "";
+                    $PUBPLACE = 0;
+                    }
+# DATE
+                if ($thetag =~ /<DATE>/i) {
+                    $currentwords = "";
+                    $DATE = 1;
+                    }
+                if ($thetag =~ /<\/DATE>/i && $DATE) {
+                    $sourcedate .= $currentwords . " ";
+                    $currentwords = "";
+                    $DATE = 0;
+                    }
+        }
+
+# ======================= END OF SOURCEDESC ==========================
+
+# ======================= In PROFILEDESC ==========================
+# Then process tag pairs you want in the PROFILEDESC  by prejudice
+# this will be what ARTFL is most interested in.
+# For neatness, these could be subroutines....
+
+        if ($PROFILEDESC) {
+
+# <keywords scheme="LCSH">
+                if ($thetag =~ /<keywords scheme="LCSH">/i) {
+                    $currentwords = "";
+                    $LCSHkeywords = 1;
+                    }
+                if ($thetag =~ /<\/keywords>/i && $LCSHkeywords) {
+                    $profilekeywords = $currentwords . " ";
+                    $currentwords = "";
+                    $LCSHkeywords = 0;
+                    }
+
+# <keywords scheme="genre">
+                if ($thetag =~ /<keywords scheme="genre">/i) {
+                    $currentwords = "";
+                    $genrekeywords = 1;
+                    }
+                if ($thetag =~ /<\/keywords>/i && $genrekeywords) {
+                    $profilegenre = $currentwords . " ";
+                    $currentwords = "";
+                    $genrekeywords = 0;
+                    }
+# DATE
+                if ($thetag =~ /<creation>/i) {
+                    $currentwords = "";
+                    $PROFILEDATE = 1;
+                    }
+                if ($thetag =~ /<\/creation>/i && $PROFILEDATE) {
+                    $profiledescdate = $currentwords . " ";
+                    $currentwords = "";  
+                    $PROFILEDATE = 0;
+                    }
+
+        }
+
+# ======================= END OF PROFILEDESC ==========================
+
+    }
+
+    
+sub recordbuilder() {
+	
+	if (!$sourcetitle && $filedesctitle) {
+		$sourcetitle = $filedesctitle;
+		}
+	if (!$sourcetitle) {
+		$sourcetitle = "NA";
+		}
+	$theoutrecord = $sourcetitle . "\t";
+
+        if (!$sourceauthor && $filedescauthor) {
+                $sourceauthor = $filedescauthor;
+                }
+        if (!$sourceauthor) {
+                $sourceauthor = "NA";
+                }
+	$theoutrecord .= $sourceauthor . "\t";
+	
+	$t1 = &getfournums($sourcedate);
+	$t2 = &getfournums($filedescdate);
+	$t3 = &getfournums($profiledescdate);
+	if ($t1) {
+		$artfldate = $t1;
+		}
+	elsif ($t2) {
+		$artfldate = $t2;
+		}
+	elsif ($t3) {
+		$artfldate = $t3;
+	 	}	
+        if ($t1 && $t1 < $artfldate) {
+                $artfldate = $t1;
+                }
+	if ($t2 && $t2 < $artfldate) {
+		$artfldate = $t2;
+		}
+	if ($t3 && $t3 < $artfldate) {
+		$artfldate = $t3;
+		}
+        if (!$artfldate) {
+                $artfldate = "NA";
+                }
+	$theoutrecord .= $artfldate . "\t";
+
+	$theoutrecord .= $profilegenre . "\t";
+	
+        if (!$sourcepublisher && $filedescpublisher) {
+                $sourcepublisher = $filedescpublisher;
+                }
+        if (!$sourcepublisher) {
+                $sourcepublisher = "NA";
+                }
+	$theoutrecord .= $sourcepublisher . "\t";
+
+	$theoutrecord .= $sourcepubplace . "\t";
+        $theoutrecord .= $filedescauthor . "\t";
+        $theoutrecord .= $filedesctitle . "\t";
+        $theoutrecord .= $filedescpublisher . "\t";
+        $theoutrecord .= $filedescpubplace . "\t";
+        $theoutrecord .= $sourcedate . "\t";
+        $theoutrecord .= $filedescdate . "\t";
+        $theoutrecord .= $profiledescdate . "\t";
+	$theoutrecord .= $profilekeywords . "\t";
+
+        if (!$filedescidno) {
+		$filedescidno = $filename;
+		$filedescidno =~ s/\..*$//;
+		$filedescidno =~ s/.*\///g;
+		}
+	$filedescidno =~ s/ //g;
+	$theoutrecord .= $filedescidno . "\t";
+	$theoutrecord .= $filename . "\t";
+	$theoutrecord .= $filesize ;
+
+	$theoutrecord =~ s/\t */\t/g;
+	$theoutrecord =~ s/\n/ /g;
+
+	if ($artfldate eq "NA") {
+		$artfldate = "9999";
+		}
+	$thesortkey = $artfldate ." ". $filedescauthor ." ". $sourcetitle;
+	if ($debug) {
+		print "$theoutrecord\n"; 
+		print $thesortkey . "\n====================\n";
+		}
+
+        $sourcetitle = "";
+        $sourceauthor = "";
+        $sourcedate = "";
+        $sourcegenre = "";
+        $sourcepublisher = "";
+        $sourcepubplace = "";
+        $filedescauthor = "";
+        $filedesctitle = "";
+        $filedescpublisher = "";
+        $filedescpubplace = "";
+        $filedescdate = "";
+        $filedescidno = "";
+	$profilekeywords = "";
+	$profilegenre = "";
+	$genrekeywords = "";
+	$profiledescdate = "";
+
+}
+
+sub wordhandler() {
+	local ($thewords);
+	$thewords = $_[0];
+	$thewords =~ s/\t/ /g;
+	$thewords =~ s/  */ /g;
+   	$thewords = &charents2utf8($thewords);
+	$thewords = &charentconvert($thewords);	
+	$currentwords .= $thewords;
+}
+
+sub charentconvert () {
+	local ($thewords);
+	$thewords = $_[0];
+	$thewords =~ s/\&apos;/\'/gi;
+	$thewords =~ s/\&rsquo;/\'/gi;
+	$thewords =~ s/\&hyphen;/\-/gi;
+	$thewords =~ s/\&colon;/\:/gi;
+	$thewords =~ s/\&ldquo;/\"/gi;
+	$thewords =~ s/\&rdquo;/\"/gi;
+	return $thewords;
+}
+
+# =================================================================
+# Subroutine: charents2utf8 converts ISO-LATIN-1 character entities in
+# index words to UTF-8 for standard word index search consistency.  
+# This is for SGML data sets and XML that have character ents rather
+# than UTF-8 characters.  Should probably come from a table
+# =================================================================
+
+sub charents2utf8 () {
+     local ($theword); 
+     $theword = $_[0];
+     $theword =~ s/\&Agrave;/\xc3\xC0/g;
+     $theword =~ s/\&Aacute;/\xc3\xC1/g;
+     $theword =~ s/\&Acirc;/\xc3\xC2/g;
+     $theword =~ s/\&Atilde;/\xc3\xC3/g;
+     $theword =~ s/\&Auml;/\xc3\xC4/g;
+     $theword =~ s/\&Aring;/\xc3\xC5/g;
+     $theword =~ s/\&AElig;/\xc3\xC6/g;
+     $theword =~ s/\&Ccedil;/\xc3\xC7/g;
+     $theword =~ s/\&Egrave;/\xc3\xC8/g;
+     $theword =~ s/\&Eacute;/\xc3\xC9/g;
+     $theword =~ s/\&Ecirc;/\xc3\xCA/g;
+     $theword =~ s/\&Euml;/\xc3\xCB/g;
+     $theword =~ s/\&Igrave;/\xc3\xCC/g;
+     $theword =~ s/\&Iacute;/\xc3\xCD/g;
+     $theword =~ s/\&Icirc;/\xc3\xCE/g;
+     $theword =~ s/\&Iuml;/\xc3\xCF/g;
+     $theword =~ s/\&ETH;/\xc3\xD0/g;
+     $theword =~ s/\&Ntilde;/\xc3\xD1/g;
+     $theword =~ s/\&Ograve;/\xc3\xD2/g;
+     $theword =~ s/\&Oacute;/\xc3\xD3/g;
+     $theword =~ s/\&Ocirc;/\xc3\xD4/g;
+     $theword =~ s/\&Otilde;/\xc3\xD5/g;
+     $theword =~ s/\&Ouml;/\xc3\xD6/g;
+     $theword =~ s/\&#215;/\xc3\xD7/g;
+     $theword =~ s/\&Oslash;/\xc3\xD8/g;
+     $theword =~ s/\&Ugrave;/\xc3\xD9/g;
+     $theword =~ s/\&Uacute;/\xc3\xDA/g;
+     $theword =~ s/\&Ucirc;/\xc3\xDB/g;
+     $theword =~ s/\&Uuml;/\xc3\xDC/g;
+     $theword =~ s/\&Yacute;/\xc3\xDD/g;
+     $theword =~ s/\&THORN;/\xc3\xDE/g;
+     $theword =~ s/\&szlig;/\xc3\xDF/g;
+     $theword =~ s/\&agrave;/\xc3\xE0/g;
+     $theword =~ s/\&aacute;/\xc3\xE1/g;
+     $theword =~ s/\&acirc;/\xc3\xE2/g;
+     $theword =~ s/\&atilde;/\xc3\xE3/g;
+     $theword =~ s/\&auml;/\xc3\xE4/g;
+     $theword =~ s/\&aring;/\xc3\xE5/g;
+     $theword =~ s/\&aelig;/\xc3\xE6/g;
+     $theword =~ s/\&ccedil;/\xc3\xE7/g;
+     $theword =~ s/\&egrave;/\xc3\xE8/g;
+     $theword =~ s/\&eacute;/\xc3\xE9/g;
+     $theword =~ s/\&ecirc;/\xc3\xEA/g;
+     $theword =~ s/\&euml;/\xc3\xEB/g;
+     $theword =~ s/\&igrave;/\xc3\xEC/g;
+     $theword =~ s/\&iacute;/\xc3\xED/g;
+     $theword =~ s/\&icirc;/\xc3\xEE/g;
+     $theword =~ s/\&iuml;/\xc3\xEF/g;
+     $theword =~ s/\&eth;/\xc3\xF0/g;
+     $theword =~ s/\&ntilde;/\xc3\xF1/g;
+     $theword =~ s/\&ograve;/\xc3\xF2/g;
+     $theword =~ s/\&oacute;/\xc3\xF3/g;
+     $theword =~ s/\&ocirc;/\xc3\xF4/g;
+     $theword =~ s/\&otilde;/\xc3\xF5/g;
+     $theword =~ s/\&ouml;/\xc3\xF6/g;
+     $theword =~ s/\&#247;/\xc3\xF7/g;
+     $theword =~ s/\&oslash;/\xc3\xF8/g;
+     $theword =~ s/\&ugrave;/\xc3\xF9/g;
+     $theword =~ s/\&uacute;/\xc3\xFA/g;
+     $theword =~ s/\&ucirc;/\xc3\xFB/g;
+     $theword =~ s/\&uuml;/\xc3\xFC/g;
+     $theword =~ s/\&yacute;/\xc3\xFD/g;
+     $theword =~ s/\&thorn;/\xc3\xFE/g;
+     $theword =~ s/\&yuml;/\xc3\xFF/g;
+
+return $theword;
+
+}
+
+sub getfournums {
+	local ($ret, $tempdate);
+	$ret = 1;
+	$tempdate = $_[0];
+        $tempdate =~ s/([0-9][0-9][0-9][0-9])//;
+        $ret = $1;
+	if (!$ret) {
+		$ret = 0;
+		}
+return $ret;
+}
+

@@ -1,0 +1,160 @@
+#!/usr/bin/perl
+#if the path above is incorrect, change it to #!/your/path/to/perl
+
+# This script attempts to automatically determine your philologic settings
+# and perform a database load of frequency information.
+# It also copies two files into your philologic web root
+# (a search for for frequency and frequency timeseries)
+# and the corresponding cgis into your cgi path.
+
+# Expect the database on the command line
+if ($ARGV[0]) {
+    $dbname = $ARGV[0];
+} else {    
+    print "\nPlease specify a philologic database name on the command line like so: \n\n" . "makefrequencies yourdatabase \n\n";
+    exit();
+}
+
+print "Processing frequencies for database: $dbname \n";
+
+# After this point, you should only need to edit if your
+# configuration deviates from the standard
+# or your mysql info is not set in lib/philo-dg.cfg
+
+print "\nLoading philologic configuration....\n";
+
+$PHILOSITECFG = "/etc/philologic";
+
+do "$PHILOSITECFG/dbnames";
+do "$PHILOSITECFG/philologic.cfg";
+
+if (!($SYSTEM_DIR = $dbnames{$dbname})) {
+	print "Sorry, we did not find $dbname in $PHILOSITECFG/dbnames . Please check your database name and try again.\n\n";
+	exit();
+}
+
+$FREQ_DIR = $SYSTEM_DIR . "frequencies/";
+unshift (@INC, $SYSTEM_DIR . "lib");
+require $SYSTEM_DIR . "lib/philosubs.pl";
+require $SYSTEM_DIR . "lib/philo-db.cfg";
+
+$FREQTABLE = $TABLE . "freqs";
+$YEARFREQTABLE = $TABLE . "yearfreqs";
+
+print "Copying and customizing frequency files...\n";
+
+system "cp $SYSTEM_DIR/words.R " . $FREQ_DIR . "words.R.old";
+system "cp $SYSTEM_DIR/bibliography " . $FREQ_DIR;
+
+print "Creating new frequency file...\n";
+
+#create a word.freq.doc from wordocfreq directory
+do "$FREQ_DIR/mk-single-docfreq.pl";
+
+# CGI path for sedding below
+$cgipath = $PHILOCGI;
+$cgipath =~ s/\//\\\//g;
+
+
+# Inser the proper values into our sql loaders and html search forms
+
+system "mv load.docfreq.sql load.docfreq.tmp";
+system "sed -e 's/XXXDATABASE/$DATABASE/' load.docfreq.tmp > load.docfreq.tmp2";
+system "sed -e 's/XXXTABLENAME/$FREQTABLE/' load.docfreq.tmp2 > load.docfreq.sql";
+system "rm load.docfreq.tmp*";
+
+system "mv load.timeseries.sql load.timeseries.tmp";
+system "sed -e 's/XXXDATABASE/$DATABASE/' load.timeseries.tmp > load.timeseries.tmp2";
+system "sed -e 's/XXXTABLENAME/" . $YEARFREQTABLE. "/' load.timeseries.tmp2 > load.timeseries.sql";
+system "rm load.timeseries.tmp*";
+
+system "cp search-forms/timeseries.html search-forms/timeseries.original.html";
+system "sed -e 's/XXXDBNAME/$dbname/' search-forms/timeseries.html > search-forms/timeseries.tmp";
+system "sed -e 's/XXXCGIPATH/" . $cgipath . "/' search-forms/timeseries.tmp > search-forms/timeseries.html";
+system "rm search-forms/timeseries.tmp*";
+
+system "cp search-forms/frequencylists.html search-forms/frequencylists.original.html";
+system "sed -e 's/XXXDBNAME/$dbname/'  search-forms/frequencylists.html >  search-forms/frequencylists.tmp";
+system "sed -e 's/XXXCGIPATH/" . $cgipath . "/'  search-forms/frequencylists.tmp >  search-forms/frequencylists.html";
+system "rm search-forms/frequencylists.tmp*";
+
+
+if ($PASSWD ne "") {
+    $passwdstring = " -p" . $PASSWD;
+} else {
+    $passwdstring = "";
+}
+
+# GENERAL WORD FREQUENCY
+
+print "Processing frequency files and loading databases...\n";
+
+#1a)
+system "sort -T . -rn +1 +2 word.freq.doc > word.freq.doc.srtd";
+
+#2a)
+system "mysql -u" . $USER . $passwdstring . " < load.docfreq.sql";
+
+#3a)
+system "perl mk-workfreqs.pl < word.freq.doc.srtd > doc.freq";
+
+#4a)
+system 'tr -d "\256" < words.R.old | sort | uniq > words.R';
+
+
+#timseseries:
+
+#1b)
+system "perl mk-doc-year.pl < word.freq.doc | sort -T . > word.freq.year.tmp";
+
+#2b)
+system "perl mk-yearfreqs.pl < word.freq.year.tmp > word.year.freq";
+
+#3b)
+system "perl mk-totalyear-freqs.pl < word.year.freq > year.freq";
+
+#4b)
+system "sort -T . -rn +3 +2 < word.year.freq > word.year.freq.tmp1";
+
+#5b)
+system "perl mkaccentsortkey.pl <  word.year.freq.tmp1 > word.year.freq.srtd";
+
+#6b)
+system "mysql -u" . $USER . $passwdstring . " < load.timeseries.sql";
+
+#CGI INSTALL
+
+print "Copying files to web and cgi paths...\n";
+
+if (-e $PHILOCGIPATH . "/timeseries.pl") {
+	print "File " . $PHILOCGIPATH . "/timeseries.pl" . " already exists, not overwriting.\n";
+} else {
+	system "cp " . $FREQ_DIR . "cgi-scripts/timeseries.pl " . $PHILOCGIPATH . "/timeseries.pl \n";
+	system "chmod 755 " . $PHILOCGIPATH . "/timeseries.pl";
+}
+
+if (-e $PHILOCGIPATH . "/wordfreqgen.pl") {
+        print "File " . $PHILOCGIPATH . "/wordfreqgen.pl already exists, not overwriting.\n";
+} else {
+	print "Creating file " . $PHILOCGIPATH . "/wordfreqgen.pl \n";
+	system "cp " . $FREQ_DIR . "cgi-scripts/wordfreqgen.pl " . $PHILOCGIPATH . "/wordfreqgen.pl";
+	system "chmod 755 " . $PHILOCGIPATH . "/wordfreqgen.pl";
+}
+
+if (-e $PHILOWEBPATH . "/" . $dbname . ".frequencylists.html") {
+        print "File " . $PHILOWEBPATH . "/" . $dbname . ".frequencylists.html already exists, not overwriting.\n";
+} else {
+        print "Creating file " . $PHILOWEBPATH . "/" . $dbname . ".frequencylists.html \n";
+	system "cp " . $FREQ_DIR . "search-forms/frequencylists.html " . $PHILOWEBPATH . "/" . $dbname . ".frequencylists.html";
+}
+
+if (-e $PHILOWEBPATH . "/" . $dbname . ".timeseries.html") {
+        print "File " . $PHILOWEBPATH . "/" . $dbname . ".timeseries.html already exists, not overwriting.\n";
+} else {
+        print "Creating file " . $PHILOWEBPATH . "/" . $dbname . ".timeseries.html \n";
+	system "cp " . $FREQ_DIR . "search-forms/timeseries.html " . $PHILOWEBPATH . "/" . $dbname . ".timeseries.html";
+}
+
+system "rm word.year.freq.tmp*";
+
+print "Frequency installation complete. If all went well, you should be able to access your frequency forms at " . $PHILOWEBURL . "/" . $dbname . ".frequencylists.html and " . $PHILOWEBURL . "/" . $dbname . ".timeseries.html .";

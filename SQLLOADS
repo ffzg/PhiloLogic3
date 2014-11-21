@@ -1,0 +1,22 @@
+HOW TO LOAD BIBLIOGRAPHIC DATA INTO MYSQL (and make it work)
+
+Before you do anything else, you need to create a MySQL database
+called "philologic" and a user called "philologic" (or maybe
+philologic@localhost -- I can never tell) with a password of your
+choosing.  Give the philologic user only select access to philologic.*
+-- that's all it needs, as data loads will be done as real users.
+This database will hold all the tables for any philologic loads for
+which you choose SQL metadata handling.  You should then edit
+/etc/philologic/philologic.cfg and enter the password for the
+"philologic" MySQL user in the $PASSWD variable.
+
+Then run philoload with an additional argument, --loadsql, before the
+list of files to load (i.e. philoload mydatabase --loadsql *.xml).  It
+will (after going through the rest of the load successfully) prompt
+you for your MySQL password then load the data for you and make other
+necessary changes.  It assumes that your MySQL username is the same as
+your login username, and that you have a password.  If you have a
+different MySQL username, specify it to philoload as
+--sqluser=yoursqlusername.  If you don't have a password, specify
+--nosqlpass.
+

@@ -1,0 +1,26 @@
+# $Id: Makefile.in,v 2.11 2004/08/23 21:45:03 o Exp $
+# @configure_input@
+include ../load.cfg
+
+CC=@CC@
+PERL=@PERL@
+
+TARGETS = storeobjects tomsload1 tomsload2 mkheaders mkinfo mknavig omerge extpgmarks
+
+
+%:	%.plin
+	echo \#\!$(PERL) | cat - $*.plin >$@
+	chmod +x $@
+
+%: 	%.sh
+	echo \#\!$(SH) | cat - $*.sh >$@
+	chmod +x $@
+
+everything: $(TARGETS)
+
+clean: 
+	rm -f *.o *~ 
+
+dist-clean: clean
+	rm -f $(TARGETS)
+

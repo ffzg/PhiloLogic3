@@ -1,0 +1,39 @@
+tif2web - convert 2-color TIFF images to scaled-down web-ready
+images (GIF and PNG)
+
+Building:
+
+1. Install libjpeg (see http://www.ijg.org/).
+2. Install libpng (see http://www.libpng.org/).
+3. Install libtiff (see http://www.libtiff.org/).
+4. Install zlib (see http://www.gzip.org/zlib/).
+5. Set the locations of these packages, plus the operating system and
+   compiler being used in the "local customization" section of Makefile.
+6. Run make.
+7. Install the resulting binary, tif2web, in your favorite place for
+   such little binaries.
+
+That's all!
+
+To make comments or suggestions, please contact
+
+  dlxs-help@umich.edu
+
+---
+
+Historical information:
+
+Original author:
+   Doug Orr, doug@umich.edu  (now dbo@arbortext.com)
+
+Subsequent modifications:
+   Spencer Thomas, spencer@umich.edu
+
+PNG functionality provided by:
+   Richard Marisa, Cornell Information Technologies rjm2@cornell.edu
+
+and integrated by:
+   Prarthna Kumar, kumarp@umich.edu
+
+Ongoing bug fixes and maintenance:
+   Cory Snavely, csnavely@umich.edu

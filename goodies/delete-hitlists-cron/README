@@ -1,0 +1,4 @@
+Philologic stores up hitlists as it runs, and these can eventually starting eating up a lot of disk. If you find this happening to you, you may wish to add this shell script as a cron job. It find all hitlists older than a certain date and blows them away.
+
+Most systems will allow you to add a cron job by editing /etc/cron.tab or running the command crontab. Note that the user who the cronjob runs as will need to have write permissions on the Philologic hitlist directory.
+

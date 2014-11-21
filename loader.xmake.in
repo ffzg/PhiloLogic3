@@ -1,0 +1,279 @@
+# @configure_input@
+# $Id: loader.xmake.in,v 2.13 2004/07/08 16:44:05 o Exp $
+######################################################################
+#### Database build skeleton #########################################
+######################################################################
+
+load:		loadinstall	# Temporarily
+toms:			all.toms.valid
+indices:		all.index.valid
+
+# removed: memos
+
+all.toms.valid:		all.objects.valid
+	touch $@
+all.index.valid:	index.valid
+	touch $@
+loadinstall:		loadinstall.done
+
+TEXTLOAD= textload
+FREQ1= ...inherited...
+FREQ2= ...inherited...
+IMAGE= ...inherited...
+STATE= ...inherited...
+CRAPS= ...inherited...
+ECHO= ...inherited...
+EGREP= @EGREP@
+CHAROPT=...inherited...
+
+SORT= sort
+
+ICOMPRESS=	enprefix | { @GZIP@ || [ "$$?" = 2 ]; }
+IEXPAND=	@ZCAT@ | unprefix
+LEX=		@LEX@
+LEXLIBS=	-lfl
+
+#SORTFLAGS=	-T . -y +0 -1 +1 -2n +2 -3n +3 -4n +4 -5n +5 -6n +6 -7n +7 -8n
+SORTFLAGS=	-T . -k 1,1 -k 2,2n -k 3,3n -k 4,4n -k 5,5n -k 6,6n -k 7,7n -k 8,8n
+TIMESTAMP=	@echo "** `date` **"
+BEGIN=		$(TIMESTAMP) "[ $@ **"
+END=		$(TIMESTAMP) "] $@ **"
+
+######################################################################
+
+
+######################################################################
+#### TOMS ############################################################
+######################################################################
+
+plain-%.rawindex:	memos.exists
+	$(BEGIN)
+	$(TEXTLOAD) plain-$* | storeobjects plain-$*.rawobjects | \
+	$(SORT) $(SORTFLAGS) | \
+	splitter $(IMAGE)/count '$(ICOMPRESS)' $(STATE)/letter-%02x/plain-$*.rawindex
+	$(END)
+	touch $@
+
+plain-%.rawobjects: plain-%.rawindex
+	touch $@
+
+tomsinfo-%: objects-%.page objects-%.p1 objects-%.p2 objects-%.p3 objects-%.parag
+	$(BEGIN)
+	mkheaders $* page p1 p2 p3 parag
+	$(END)
+
+objects-%: tomsinfo-%
+	$(BEGIN)
+	omerge temp-$* $@ < plain-$*
+	$(END)
+
+temp-%: 
+	mkdir $@
+
+objects-%.page: temp-% plain-%.rawobjects
+	tomsload1 plain-$* page < plain-$*.rawobjects
+	touch $@
+
+objects-%.parag: temp-% plain-%.rawobjects
+	tomsload1 plain-$* parag < plain-$*.rawobjects
+	touch $@
+
+objects-%.p1: temp-% plain-%.rawobjects
+	tomsload2 plain-$* p1 p2 < plain-$*.rawobjects
+	touch $@
+
+objects-%.p2: temp-% plain-%.rawobjects
+	tomsload2 plain-$* p2 p3 < plain-$*.rawobjects
+	touch $@
+
+objects-%.p3: temp-% plain-%.rawobjects
+	tomsload2 plain-$* p3 parag < plain-$*.rawobjects
+	touch $@
+
+navigation-%: plain-%.rawobjects
+	mknavig $(IMAGE)/navigation < plain-$*.rawobjects
+	touch $@
+
+plain-%.toms.valid:	objects-% navigation-%
+#	validate-toms -fs plain <plain-$* || { rm plain-$*.rawindex; false; }
+#	-rm plain-$*.toms.save
+	touch $@
+
+all.objects.valid: $%*.toms.valid
+	$(BEGIN)
+	cat `echo objects-$%* | sed 's:plain\-::g'` > $@
+	cat `echo tomsinfo-$%* | sed 's:plain\-::g'` > tomsinfo
+	$(DONE)
+
+
+#pagemarks: all.toms.valid
+#	$(BEGIN)
+#	for doc in `cat plain.files | awk '{print $$2"/"$$3}'`; \
+#	do extpgmarks $$doc; done > $@.tmp
+#	echo '?????' | cat - $@.tmp | $(SORT) -u > $@
+#	rm $@.tmp
+#	$(END)
+
+pagemarks: all.toms.valid
+	echo '?????' >> newpagemarks.raw
+	cat newpagemarks.raw | $(SORT) -u > $@
+
+pagemarks.numeric: pagemarks	
+	grep '^[0-9][0-9]*$$' pagemarks  | $(SORT) -n > $@
+
+pagemarks.alpha: pagemarks
+	grep -v '^[0-9][0-9]*$$' pagemarks | sed 's/^$$/?/' | tr 'A-Z' 'a-z' | $(SORT) > $@
+
+
+######################################################################
+#### Indices #########################################################
+######################################################################
+
+$(STATE)/letter-%.rawindex:	all.toms.valid $(IMAGE) pagemarks.numeric pagemarks.alpha
+	$(BEGIN)
+	for f in $(STATE)/letter-$*/*.rawindex; do cat $$f | $(IEXPAND) | replacer > $$f.tmp; done
+	$(TIMESTAMP)
+	$(SORT) -m $(SORTFLAGS) $(STATE)/letter-$*/*.rawindex.tmp | $(ICOMPRESS) >$@
+	$(END)
+	echo @ECHO_N@ '$* merging @ECHO_C@'; if [ "`cat $@ | $(IEXPAND) | wc|awk '{print $$1}'`" = \
+	  "`for f in $(STATE)/letter-$*/*.rawindex; do cat $$f | $(IEXPAND); done | wc|awk '{print $$1}'`" ]; \
+	then rm $(STATE)/letter-$*/*.rawindex.tmp; echo ok; \
+	else mv $@ $@.INVALID; echo FAILED; \
+	fi
+	[ -f $@ ]
+
+all.rawindex:		all.toms.valid
+	touch $@.tmp
+	for f in $(STATE)/letter-??; do loader $$f.rawindex || rm $@.tmp; done
+	mv $@.tmp $@
+
+counts:	all.rawindex ../pack/indstrip
+	$(BEGIN)
+	for f in $(STATE)/letter-*.rawindex; do cat $$f | $(IEXPAND); done | \
+	  indstrip bitlens | uniq -c >$@
+	@GAWK@ '{n+=$$1}END{print n}' $@ | cmp - $(IMAGE)/count || { mv $@ $@.INVALID; false; }
+	$(END)
+
+######################################################################
+#### Indices packing #################################################
+######################################################################
+
+../pack/dbspecs0c.h:	../pack/dbspecs.H bitlens
+	$(BEGIN)
+	cp ../pack/dbspecs.H $@
+	echo "#define BITLENGTHS     " `cat bitlens` >> $@
+	$(END)
+
+../pack/dbspecs2.h:	index.1 ../pack/dbspecs0c.h	
+	$(BEGIN)
+	cp ../pack/dbspecs0c.h $@
+	echo "#define  FREQ2_LENGTH   " `awk '{if ($$1>m)m=$$1}END{print m}' < counts |\
+	@PERL@ -ne '{print int(log($$_)/0.693147180559945+1)."\n";}'` >> $@
+	echo "#define  OFFST_LENGTH   " `@PERL@ -e '$$s=(stat("$(IMAGE)/index.1")) [7]; \
+	print int(log($$s)/0.693147180559945+1)."\n";'` >> $@
+	@LN_S@ -f $@ ../search3/dbspecs.h
+	$(END)
+	
+index.1: ../pack/e-n2
+	$(BEGIN)
+	rawindex counts $(FREQ1) 1000000000 $(STATE)/letter-%02x.rawindex '$(IEXPAND)' | e-n2 > $@
+	$(END)
+
+gdbm.t2: index.1 ../pack/p-t2
+	$(BEGIN)
+	p-t2
+	touch $@
+	$(END)
+
+gdbm.t1: all.rawindex counts ../pack/p-t1
+	$(BEGIN)
+	@packing-info counts 0 $(FREQ1)
+	rawindex counts 0 $(FREQ1) $(STATE)/letter-%02x.rawindex '$(IEXPAND)' 2>/dev/null | filtt1 | p-t1
+	touch $@
+	$(END)
+
+
+index.valid: gdbm.t1 gdbm.t2 ../search3/unpack/validate-index
+	echo $$SYSTEM_DIR
+	for f in $(STATE)/letter-*.rawindex; do cat $$f | $(IEXPAND); done | \
+	  ../search3/unpack/validate-index || { mv $(IMAGE)/index $(IMAGE)/index.INVALID; false; }
+	[ -f $(IMAGE)/index ]
+#	rm $(STATE)/letter-??.rawindex
+	touch $@
+
+../pack/indstrip: 
+	$(BEGIN)
+	(cd ../pack; make indstrip)
+	$(END)	
+
+../pack/e-n2: ../pack/dbspecs0c.h
+	$(BEGIN)
+	(cd ../pack; make e-n2)
+	$(END)
+
+../pack/p-t1: ../pack/dbspecs2.h
+	$(BEGIN)
+	(cd ../pack; make p-t1)
+	$(END)
+
+../pack/p-t2: ../pack/dbspecs2.h
+	$(BEGIN)
+	(cd ../pack; make p-t2)
+	$(END)
+
+../search3/unpack/dbspecs2.h: ../pack/dbspecs2.h
+	$(BEGIN)
+	(cp ../pack/dbspecs2.h ../search3/unpack/dbspecs.h)
+	$(END)
+
+../search3/unpack/validate-index: ../search3/unpack/dbspecs2.h
+	$(BEGIN)
+	(cd ../search3/unpack; make validate-index)
+	$(END)
+
+../search3/unpack/libunpack_e.bundle: ../search3/unpack/dbspecs2.h
+	$(BEGIN)
+	(cd ../search3/unpack; make libunpack_e.bundle)
+	$(END)
+
+######################################################################
+#### Loadinstall #########################################################
+######################################################################
+
+
+loadinstall.done: all.index.valid ../search3/unpack/libunpack_e.bundle
+	$(BEGIN)
+	install -m 0755 -d $(IMAGE)/lib
+	cp ../search3/unpack/libunpack_e.bundle $(IMAGE)/lib
+	mkdocinfo ../bibliography tomsinfo > $(IMAGE)/docinfo
+	cp all.objects.valid $(IMAGE)/toms/objects
+	mkpagelist $(IMAGE)/pagemarks
+	sed 's:^.* ::g' counts > $(IMAGE)/words.R
+	cp ../bibliography $(IMAGE)
+	cp ../installdir/gimme $(IMAGE)
+	cp ../installdir/gimme.sql $(IMAGE)
+	cp ../installdir/subdocgimme $(IMAGE)
+	cp ../installdir/subdocgimme.sql $(IMAGE)
+	cp -R ../installdir/lib $(IMAGE)
+	$(SORT) -rn counts | head -120 | tr -d '\256' | awk '{print $$2}' | $(SORT) | uniq > $(IMAGE)/lib/cluster.filter.wrds
+	awk '{print $$2}' < counts | ../installdir/make_wom_words.R > $(IMAGE)/words.R.wom
+	cp ../installdir/crapser-egrep-2field $(IMAGE)/crapser
+	cp countbydocid $(IMAGE)
+	../utils/dividxhashmake.pl < divindex.raw > $(IMAGE)/dividxchild.tab
+	cp divindex.raw $(IMAGE)
+	cp subdivindex.raw $(IMAGE)
+	mkdir $(IMAGE)/references
+	cp ref2idtable $(IMAGE)/references
+	../installdir/mkreferences $(IMAGE)/references < ref2idtable
+	cp counts $(IMAGE)
+	cp ../installdir/VERSION $(IMAGE)
+	mkdir $(IMAGE)/frequencies
+	mv wordfreqdoc $(IMAGE)/frequencies/
+	cp -R ../installdir/freqpack/* $(IMAGE)/frequencies/
+	mkdir $(IMAGE)/src
+	(cd ../search3/unpack; cp dbspecs.h $(IMAGE)/src)
+	touch $@
+	$(END)
+
+
+

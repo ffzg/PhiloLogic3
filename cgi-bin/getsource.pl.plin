@@ -1,0 +1,82 @@
+#!@PERL@ -T
+no strict "refs";
+use Cwd qw(chdir getcwd);
+use Time::Local;
+#
+# $Id: getsource.pl.plin,v 2.12 2004/07/08 18:07:14 o Exp $
+#
+# philologic 2.8 -- TEI XML/SGML Full-text database engine
+# Copyright (C) 2004 University of Chicago
+# 
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the Affero General Public License as published by
+# Affero, Inc.; either version 1 of the License, or (at your option)
+# any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# Affero General Public License for more details.
+# 
+# You should have received a copy of the Affero General Public License
+# along with this program; if not, write to Affero, Inc.,
+# 510 Third Street, Suite 225, San Francisco, CA 94107 USA.
+
+# Get the QUERY_STRING, parse it and evaluate it....
+$QS = $ENV{'QUERY_STRING'};
+                                                                                
+ 
+ 
+@argbuffer = split ("&", $QS);
+@argbuffer = grep (/^[a-zA-Z_0-9]*=.+$/, @argbuffer);
+ 
+foreach $arg (@argbuffer) {
+       $arg =~ s/\%3A/:/g;
+       $arg =~ s/\%2C/,/g;
+       $arg =~ s:\%2F:/:g;
+       $arg =~ s:\%20: :g;
+       $arg =~ s/\%60//g;
+       $arg =~ m/(\s*)=/;
+       $var = $1;
+       $arg =~ m/=(\s*)/;
+       $var = $1;
+       my ($var, $value) = split(/\s*=\s*/, $arg, 2);
+       $$var = $value;
+   }
+ 
+if ($dbname =~ /^([[:alnum:]]+)$/) {
+        $dbname = $1;                   # $dbname now untainted
+    } else {
+        die $philomessage[224];      # log this somewhere
+    }
+ 
+
+delete @ENV{'IFS', 'CDPATH', 'ENV', 'BASH_ENV'};
+
+$ENV{PATH} = "/bin:/usr/bin"; # this can be overridden in philologic.cfg
+
+do "@sysconfdir@/philologic/philologic.cfg";
+do "@sysconfdir@/philologic/dbnames";
+$SYSTEM_DIR=$dbnames{"$dbname"};
+
+
+$now = timelocal((localtime)[0,1,2,3,4,5]);
+$tarname = "@PACKAGE_TARNAME@.@PACKAGE_VERSION@";
+
+if (-e "$PHILOWEBPATH/$tarname-cgiscripts.tar.gz") {
+	$scriptsmod = ((stat("$PHILOWEBPATH/$tarname-cgiscripts.tar.gz"))[9]); 
+	if (($now - $scriptsmod) > 86400) {
+		chdir "@localstatedir@/lib";
+		system("tar czf $PHILOWEBPATH/$tarname-cgiscripts.tar.gz philologic/local-cgi-bin/*");
+	}
+}
+else {
+	chdir "@localstatedir@/lib";
+	system("tar czf $PHILOWEBPATH/$tarname-cgiscripts.tar.gz philologic/local-cgi-bin/*");
+}
+
+print "Content-type: text/html\n\n";
+print "<a href=\"$PHILOWEBURL/$tarname-$dbname.tar.gz\">" . sprintf($philomessage[225], $dbnameb) . "</a><br/>\n";
+print "<a href=\"$PHILOWEBURL/$tarname-cgiscripts.tar.gz\">" . $philomessage[226] . "</a><br/>\n";
+
+

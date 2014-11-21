@@ -1,0 +1,49 @@
+The PhiloLogic load process takes a number of TEI-encoded texts,
+processes them, and creates a directory tree that we call the database
+image or the system_dir.  We've written a command-line loader that
+should handle this, and more, for you, but it's fairly new and so
+probably immature, so you may find problems with it.  But this is how
+you use it:
+
+- cd to the directory that holds the texts you wish to load.
+- run a command like
+	philoload mydatabase *.xml
+
+"mydatabase" is the database name; it must be composed of only the
+letters A-Za-z and the numerals 0-9, but otherwise it can be whatever
+you want it to be.  It must always be the first argument to philoload.
+
+*.xml is a shell glob pattern that tells the system to load all the
+files in the directory whose names end in ".xml".  This glob expansion
+is handled by the shell and it should appear to philoload as though
+you listed the files as:
+	philoload mydatabase file1.xml anotherfile.xml file3.xml file?.xml
+
+It should also work to say "*.xml *.sgml" though I haven't tried it
+myself.
+
+philoload takes additional arguments that you may see by running it
+with no arguments:
+
+philoload databasename [ --texts=/path/to/texts] [ --filelist=files2load.txt ] 
+	[ --image=/where/to/put/IMAGE/] [ --loader=/path/to/textloader ] 
+	[ --mkbibliography=/path/to/extractor ] --delete --loadsql 
+	--sqluser=notme files1.xml file2.sgml file3*
+
+loader and mkbibliography would be local versions/modifications of
+xml-sgmlloader.pl and newextract.pl that you wanted to use instead of
+those, but if you're just downloading and testing you probably won't
+be interested in that for some time.  --loadsql loads the
+bibliographic metadata into a MySQL database, and --delete deletes
+pre-existing database images if you know you want to replace them
+(instead of giving them a different name).
+
+If the loader says the load was successful, point your browser to
+http://yourserver/philologic/philosearch.html (or wherever you put
+philosearch with ./configure --with-web-url=/elsewhere), enter your
+databasename where it says "ENTER SOMETHING" and run a search.
+
+If your load fails and you can't figure it out, write to
+support@philologic.uchicago.edu and include (preferably gzipped)
+/var/philologic/work/LOADER.LOG
+

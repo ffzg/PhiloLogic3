@@ -1,0 +1,5 @@
+{
+Description = "NServer";
+Provides = ("NServer");
+OrderPreference = "Last";
+}

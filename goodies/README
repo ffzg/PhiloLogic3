@@ -1,0 +1,32 @@
+
+This directory contains various parts that you may need.
+
+philohistory.js:  Javascript required to make PhiloLogic Search
+History work.  This goes into the SEARCH FORM for each database.
+If you are using Philo3 with form support, this should be 
+automatically added to the search form.
+
+PUSH-to-HYPERPO: Code chunks to allow you to push whole documents
+or parts of documents to external functions, in this case
+HYPERPO.  Variants on this worked to also push to TaporWare
+
+philologin.pl: an example cgi-bin script to allow users to
+"login".  This registers single IP address to a spill file.
+You will need to configure this for each database in the
+script and in philo-db.cfg
+
+philo.login.html: a dummy login form......
+
+similiarity-crapser: a replacement for the standard word pattern
+exploder using agrep.  Good for forcing similiarity searches primarily
+for dirty OCR applications.  Almost certainly needs editing to get
+gawk, perl, agrep locations right.  Also check the similarity 
+values which get set by looking at length.  Note that agrep is NOT
+Unicode aware!!!   ARTFL subscribers can see this in action in
+  http://www.lib.uchicago.edu/efts/ARTFL/projects/dicos/moreri/searchform.html
+and we will add a form for a public resource when we get one. 
+Finally the code has some comments.
+
+greek2uft8.perl: chunk of a perl script that converts Chadwick-Healey
+and HTML 4.0 character entities to UTF-8.  
+

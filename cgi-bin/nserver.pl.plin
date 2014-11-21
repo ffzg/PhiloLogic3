@@ -1,0 +1,233 @@
+#!@PERL@ 
+# -*- perl -*-
+# @configure_input@
+#
+# $Id: nserver.pl.plin,v 2.14 2004/07/08 18:07:14 o Exp $
+#
+# philologic 2.9 -- TEI XML/SGML Full-text database engine
+# Copyright (C) 2005 University of Chicago
+# 
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the Affero General Public License as published by
+# Affero, Inc.; either version 1 of the License, or (at your option)
+# any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# Affero General Public License for more details.
+# 
+# You should have received a copy of the Affero General Public License
+# along with this program; if not, write to Affero, Inc.,
+# 510 Third Street, Suite 225, San Francisco, CA 94107 USA.
+
+$PHILOSITECFG = "@sysconfdir@/philologic";
+
+do "$PHILOSITECFG/philologic.cfg";
+do "$PHILOSITECFG/dbnames";
+
+$nobody = $PHILORUNUSER; # [redhat = 99; solaris = 60001]
+$artfl = $PHILORUNGROUP; 
+
+$> = $nobody;
+$< = $nobody;
+
+$) = $artfl;
+$( = $artfl;
+
+require 5.002;
+#           use strict;
+
+BEGIN  { $ENV{PATH} = '/usr/bin:/bin' } # isn't this pointless?
+delete @ENV{'IFS', 'CDPATH', 'ENV', 'BASH_ENV'};
+
+
+if (!$PHILONSERVERPORT) {     # should be from general philo config.
+        $PHILONSERVERPORT = "2346";
+        }
+
+
+use Socket;
+use Carp;
+use Sys::Hostname;
+
+sub spawn;  # forward declaration
+
+sub logmsg { 
+	   print "\n\n===============================\n";
+           print "$0 $$: @_ at ", scalar localtime, "\n";
+	   }
+
+my $printlimit = $PHILOSEARCHLIMIT;
+if (!$printlimit) {
+	$printlimit = 1000000;
+	}
+
+my $port = shift || $PHILONSERVERPORT;
+my $proto = getprotobyname('tcp');
+$port = $1 if $port =~ /(\d+)/; # untaint port number
+
+socket(Server, PF_INET, SOCK_STREAM, $proto)        || die "socket: $!";
+setsockopt(Server, SOL_SOCKET, SO_REUSEADDR,
+		   pack("l", 1))   || die "setsockopt: $!";
+bind(Server, sockaddr_in($port, INADDR_ANY))        || die "bind: $!";
+listen(Server,SOMAXCONN)                            || die "listen: $!";
+
+logmsg "server started on port $port";
+
+my $waitedpid = 0;
+my $paddr;
+
+sub REAPER {
+	$waitedpid = wait;
+	$SIG{CHLD} = \&REAPER;  # loathe sysV
+#               logmsg "reaped $waitedpid" . ($? ? " with exit $?" : '');
+	$retvalue = $?;
+}
+
+$SIG{CHLD} = \&REAPER;
+
+select (Server); $| = 1; select (STDOUT);
+
+for ( $waitedpid = 0;
+	  ($paddr = accept(Client,Server)) || $waitedpid;
+	  $waitedpid = 0, close Client)
+{
+	select (Client); $| = 1; select (STDOUT);
+	
+	next if $waitedpid and not $paddr;
+	my($port,$iaddr) = sockaddr_in($paddr);
+
+# find out who I am:
+	$hostname = hostname();
+	$myaddr = gethostbyname($hostname);
+	$myip = inet_ntoa($myaddr);
+        $iip = inet_ntoa($iaddr);
+	
+	if (($myip eq $iip) || ($iip eq "127.0.0.1"))
+
+## find out who's asking; refuse if not local:
+#	my $clientname = gethostbyaddr($iaddr,AF_INET);
+#	if (( $clientname eq 'localhost' ) || ( $clientname eq 'localhost.localdomain' ))
+	{
+		logmsg "connection from $iaddr [",
+		inet_ntoa($iaddr), "]
+                           at port $port";
+		
+		spawn;
+	}
+	else
+	{
+		logmsg "refused connection from $iaddr [",
+		inet_ntoa($iaddr), "]
+			    at port $port";
+	}
+	
+}
+
+sub spawn {
+	
+	my $pid;
+	my $received;
+	my $sys_dir; 
+	my $file;
+	my $corp; 
+	my $option;
+	my @W; 
+	my $w; 
+	my $SEARCH;
+#	       my $retvalue;
+	
+	if (!defined($pid = fork)) {
+		logmsg "cannot fork: $!";
+		return;
+	} elsif ($pid) {
+		logmsg "begat $pid";
+		return; # I'm the parent
+	}
+	
+	# else I'm the child -- go spawn
+	
+	$sys_dir = <Client>; chop $sys_dir;
+	$file = <Client>; chop $file;
+	$corp = <Client>; chop $corp;
+	$option = <Client>; chop $option;
+	
+	undef @W;
+	
+	while ($received = <Client>) {
+#	           print STDERR $received;
+		
+		if ( $received eq "END\n" ) {
+			print Client "END\n";
+		}
+		else {
+#	                 print Client "you said: " . $received;
+			push ( @W, $received ); 
+		}
+	}
+	
+	foreach $w (@W) {
+		print STDERR $w; 
+	}
+
+	$ENV{'SYSTEM_DIR'} = $sys_dir;
+
+# Here we assume that the little shim shell which passes the
+# library directory will always live in $PHILOCGIPATH
+        $SEARCH = "| $PHILOCGIPATH/search3 ";
+
+        # $SEARCH = "| /usr/lib/cgi-bin/newphilo/search3 ";
+	$SEARCH .= "-P:binary ";
+	$SEARCH .= "-E:L=$printlimit ";
+        $SEARCH .= $option . " ";
+        if ($corp) {
+	     $SEARCH .= $corp;
+	     }
+	     
+
+# MVO Nov 8 2004: redirecting errors from search_ to a histlist.XXXXX.error
+# file.  search2t has been modified to catch memory limit exceeded.
+# We can add others as required.
+	$errorfile = $file . ".error";
+	$SEARCH .= " 2>" . $errorfile . " ";
+
+	$SEARCH .= " > " . $file;
+
+	print STDERR "search arg is $SEARCH\n";
+
+	open (SEARCH, "$SEARCH");
+
+	foreach $w (@W) {
+		print SEARCH $w;
+	}
+
+	close SEARCH;
+
+	$retvalue = int ( $retvalue / 256 ); 
+
+# These don't work but should some day.....  All come back as 0.
+	print STDERR $retvalue . "\n";
+	if ( $retvalue == 111 )	{
+		system ( 'echo 111 > ' . $file . '._' );
+	       }
+	elsif ( $retvalue == 112 )	{
+		system ( 'echo 112 > ' . $file . '._' );
+	       }
+	elsif ( $retvalue == -1 )	{
+		system ( 'echo minus1 > ' . $file . '._' );
+	       }
+
+	else {                                      
+		system ( 'touch ' . $file . '._' );
+	     }
+
+
+
+	exit;
+}
+
+
+
+
+

@@ -1,0 +1,6 @@
+p.withnotes {width: 80%; display: block;}
+div.noted {clear: both;}
+div.marginnote {width: 20%; float: right; FONT-SIZE: 10px; 
+p.snotemargin {padding-right: 120px; display: block;}
+p.mnotemargin {padding-right: 120px; display: block;}
+p.lnotemargin {padding-right: 120px; display: block;}

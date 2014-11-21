@@ -1,0 +1,11 @@
+#! /bin/sh
+
+zcat /projects/artflb/loaders/temp/STATE/*.rawindex | 
+/projects/artfla/loaders/loader2t/utils/unprefix | 
+gawk '{ print $1 " " $2 }' |
+tr -d "\256" |
+sort -T . |
+uniq -c |
+gawk '{ print $2 " " $1 " " $3 }'
+
+

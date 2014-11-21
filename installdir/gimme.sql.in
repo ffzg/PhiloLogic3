@@ -1,0 +1,343 @@
+# $Id: gimme.sql.in,v 2.11 2004/11/16 00:44:05 o Exp $
+# 
+# ======================== gimme.sql =============================
+# This is an SQL interface designed to swap in for the standard
+# gimme metadata/bibliographic search.  It reads from the command
+# line a set of arguments coming from search2t, in the form of
+# variable=some+args such as  title=original+fables.  The arguments
+# may include boolean operators for non-numeric fields, designated
+# in all caps and "+" (which get translated to spaces), thus
+# title=original+AND+fables.  Multiple arguments are delimited
+# by spaces:  title=essays author=margaret+NOT+newcastle
+#
+# This assumes that the data in SYSTEM_DIR/bibliography has
+# been loaded into the mySQL server.
+#
+# We may add support for the "browsefield" function which has
+# proven popular.  This runs a query on the metadata, but sorts
+# and uniqs a selected field to see what values are left, so that
+# the user can iteratively compose a query.  This is particularly
+# helpful in cases where there are many metadata fields.
+# ===============================================================
+# Use the perl DBI interfacing package.  This is fully documented
+# in Paul DuBois, MySQL (New Riders, 2000).  The perl:DBI package
+# must be installed.
+
+use DBI;
+
+# Get the SYSTEM_DIR from the environment and read format.ph.  This 
+# includes the connection arguments, field list, and field type to
+# form the query.  to get some required variables and subroutines. 
+
+$SYSTEM_DIR = $ENV{SYSTEM_DIR};
+unshift (@INC, $SYSTEM_DIR . "lib");
+require "philosubs.pl";
+
+# Since we have all the configuration info from philosubs.pl and
+# philo-db.cfg (required in philosubs.pl), we can simply start here.
+
+$wehavebib = 0;
+
+# This script was modified from a more general system to handle
+# direct WWW implementations, so we may not need all the following
+# preliminaries.
+
+while ($arg = shift (@ARGV)) {
+       $arg = '$' . $arg;
+       $arg =~ s/\+/ /g;
+       $arg =~ s/%../pack("H2", substr($&,1))/ge;
+       $arg = &postfix2UTF8($arg);
+       $mvoarg = $arg;
+       $arg =~ s/^(.[^=]*=)(.*$)/$1'$2'/;
+       $mvoarg =~ s/\$//;
+       ($mvoarg1,$mvoarg2) = split(/=/,$mvoarg);
+       if ($mvoarg2 eq "ZERO") {
+		$mvoarg2 = "0";
+		}
+       @queryhash{$mvoarg1} = $mvoarg2;
+
+# Store Bibliodata in hash ... evaluate other variables...
+       if (@BIBOPS{$mvoarg1}) {
+		$wehavebib = 1;
+          }
+       else {
+            eval $arg;
+	}
+   }
+
+# If we don't have a bibliography, let's just generate the
+# required all search SQL query.
+
+if ($wehavebib eq 0) {
+    if ($verbose && $xxbrowse) {
+        $query1 = "select $xxbrowse from $TABLE  ";
+        }
+    elsif ($verbose) {
+        $query1 = "select * from $TABLE ";
+         }
+    else {
+        $query1 = "select philodocid from $TABLE  ";
+        }
+    if ($sortorder) {
+        $query1 .= " order by " . $sortorder . ";";
+        }
+    else {
+        $query1 .= "order by philodocid;";
+        }
+    $GETALLFLAG = 1;
+}
+
+
+# So let's connect to the SQL server
+   
+my $dbh = DBI->connect ($CONNECTSTRING, $USER, $PASSWD)
+  or
+  $MVOERROR = $DBI::errstr;
+
+# This won't work for search2t .... we need a mechanism to get this
+# error message out ... probably by checking the contents of
+# CORPUS for this message.  We've never had a problem, but this is
+# probably only because we got lucky.
+
+if ($MVOERROR) { 
+   $errorfile = "$PHILOTMP/GIMME_ERROR";
+   open (ERRORFILE, ">$errorfile");
+   print ERRORFILE "<b>Internal Error</b>.  Database handle not defined. <br>"; 
+   print ERRORFILE "Error Message: $MVOERROR ";
+   print ERRORFILE "<br>";
+   print ERRORFILE "Please contact $ERRORCONTACT and include the Error Message";
+   close (ERRORFILE);
+   exit;
+   }
+
+# Two subroutines, which should be split into a couple more
+# the first to build the query and the second to push a search
+# and format results, in this case, the philodocid output as an
+# integer.
+
+if (!$GETALLFLAG) {
+	&get_query;
+	}
+# Uncomment for debugging.....
+# open (QUERYCHECK, ">> $PHILOTMP/QUERYCHECK");
+#     print QUERYCHECK "$query1\n";
+#     print QUERYCHECK "$xxbrowse\n";
+# close QUERYCHECK;
+
+# A poor man's tokenizer could be put in here by uncommenting the 
+# two lines below.  This takes the "@" and translates it into
+# a pattern to force word matching between non-alpha characters or
+# at the beginning of a string, or end at the end of a string.  You
+# would probably need to check values, but this is known to work
+# as is.  Configuration set in philo-db.cfg
+if ($SQLPOORMANSTOKENIZER) {
+	$query1 =~ s/\@([a-zA-Z0-9\[])/(\[^a-zA-Z0-9\]|^)$1/g;
+	$query1 =~ s/([a-zA-Z0-9\]])\@/$1\([^a-zA-Z0-9\]|\$)/g;
+}
+
+# =================== Optimize mySQL searches ====================
+# Optimization for mySQL searches.  By default, we are using
+# the mySQL regexp search function on strings.  We do this in
+# order to support regular expression matching for wild cards,
+# the poor man's tokenizer above, and our match all accented
+# characters convention A = a[INT-INT].  But many, even most
+# queries do not need this.  The mySQL regexp operator is slow
+# and does not benefit from indexing in mySQL.  So, the following
+# simply replaces "regexp" function with "like" if it matches
+# characters.  One could extend or restrict this this pattern as 
+# required in philo-db.cfg.   This needs to be turned ON in
+# philo-db.cfg.  It is known to work for searches and browsefields.
+# Makes a huge difference for searches on large tables.
+
+  if ($OPTIMIZESQL) {
+    if (!$SQLOPTSTRING) {
+         $SQLOPTSTRING = "[ \'a-z0-9A-Z\177-\377]*";
+         }
+    if ($query1 =~ m/regexp +"$SQLOPTSTRING"/) {
+        $query1 =~ s/regexp +"($SQLOPTSTRING)"/ like "%$1%"/g;
+        }
+    }
+
+
+# PATCH:  Enabling metadata searches containing ampersands (&)
+if ($query1 =~ / \& /i) {
+        $query1 =~ s/ \& / \&amp; /gi;
+        }
+
+# Now, run the query and pump out the results.  This should be
+# split up...
+&go;
+
+# ===================================================================
+# ======================= Subroutines ===============================
+# ===================================================================
+# Get query simply builds the SQL query from the arguments stored
+# in the query_hash by looping through the list of fields that are
+# found in Biblio_Fields.  If you have an argument for this, it
+# checks the type, and then formats is into a simple SQL string.
+
+sub get_query {                                           # What kind of query
+    if ($verbose && $xxbrowse) {                          # Contents of field
+        $query1 = "select $xxbrowse from $TABLE where ";  # for browse.
+        }
+    elsif ($verbose) {                                    # Contents of all
+        $query1 = "select * from $TABLE where ";          # fields for bib.
+         }
+    else {
+        $query1 = "select philodocid from $TABLE where "; # Philodocid for
+        }                                                 # text search
+
+
+     foreach $arg10 (@Biblio_Fields) {
+        if (length(@queryhash{$arg10}) gt 0) {
+           $qnam = $arg10;
+	   $qval = @queryhash{$arg10};
+           $qop = @BIBOPS{$arg10};
+
+# Regular Expression operator
+
+	   if ($qop eq "regexp") {	
+                if ($turnonand eq 1) {
+	           $query1 .= " AND ";
+	           } 
+                if ($qval =~ / AND / || $qval =~ / OR / || $qval =~ / NOT /) {
+                   $qval = &expand_query($qval, "$qnam", "regexp");
+                   $query1 .= " " . $qval . "  ";
+                   }
+		elsif ($qval =~ /^NOT /) {
+		     $qval =~ s/^NOT //g;
+		     $qval =~ s/[ACEINOUY]/$ACCENTS{$&}/ge;
+		     $query1 .= " $qnam NOT regexp \"$qval\" ";
+		     }
+                else {
+	           $qval =~ s/[ACEINOUY]/$ACCENTS{$&}/ge;
+                   $query1 .= " $qnam regexp \"$qval\" ";
+                   }
+               $turnonand = 1;
+	    }
+
+# Numeric Operator 
+            if ($qop eq "numeric") {
+                if ($turnonand eq 1) {
+                   $query1 .= " AND ";     
+                   }
+                if ($qval =~ / OR /) {
+                   $qval = &expand_query($qval, "$qnam", "=");
+                   $query1 .=  $qval . " ";
+                   }
+                elsif ($qval =~ /\-/) {
+                       if ($qval =~ /-$/) {
+			   $qval .= "9998";      # an end, some products have
+		           }                     # unknown dates set to 9999
+                       if ($qval =~ /^-/) {
+                           $qval = "0" . $qval;
+                           }
+
+                   ($d1, $d2) = split(/-/,$qval);
+                   $qval = "($qnam >= \"".$d1."\" AND $qnam <= \"".$d2."\") ";
+                   $query1 .= $qval;
+                   }
+                else {
+                   $query1 .= "$qnam = \"$qval\" ";
+                   }
+             $turnonand = 1;
+             }
+# Exact match.  MVO added OR support in this 09-22-04
+            if ($qop eq "exact") {      
+	    	   if ($qval =~ / OR /) {         
+		      $qval = &expand_query($qval, "$qnam", "=");
+		      $query1 .=  $qval . " ";
+		      }
+		   else {
+                       $query1 .= "$qnam = \"$qval\" ";
+		       }
+                   $turnonand = 1;
+             }
+	}
+    }
+
+# Sort Order
+    if ($sortorder) {
+        $query1 .= " order by " . $sortorder . ";";
+        }
+    else {
+        $query1 .= "order by philodocid;";
+       }
+}
+
+# Run the search and format the results.  First important think to 
+# notice.  We only have THREE LINES actually talking to the server.
+# We are expecting three different kinds of results. 
+
+sub go {
+   if ($sth = $dbh->prepare($query1)) {
+           $sth->execute();
+           while (@results = $sth->fetchrow ) { 
+                if ($verbose) {
+                        foreach $filres (@results) {
+                                if ($xxbrowse) {
+					$filres = &BrowseTermsFormat($filres);
+                                        print $filres;
+                                        }
+                                else {
+                                        print $filres . "\t";
+                                        }
+                                }
+                        print "\n";
+                        }
+                else {
+                        $resphilodocid = @results[0];
+                        print pack ('i', $resphilodocid);
+                        }
+               }
+            }
+     }
+
+# Expand query is not finished.  It takes the individual query argument,
+# the field to query, and the operator as arguments from the general
+# query processor.  It expands AND, NOT, OR operators as required.
+# This could be extended significantly to impose binding orders, 
+# accept native SQL constructs, and so on.  We decided to keep it all
+# very simple.  
+
+sub expand_query {
+         local ($q, @qq, $qt, $outq, $qq, $q2, $op, $nextnot);
+	 $nextnot = 0;
+         $q = $_[0];
+         $qt = $_[1];
+         $op = $_[2];
+	 $q =~ s/  */\_/g;
+	 $q =~ s/\_OR\_/ OR /g;
+	 $q =~ s/\_AND\_/ AND /g;
+	 $q =~ s/\_NOT\_/ NOT /g;
+         @qq = split(/ /,$q);
+         $outq = "(";
+         foreach $q2 (@qq) {
+		if ($q2 ne "OR" && $q2 ne "AND" && $q2 ne "NOT") {
+			$q2 =~ s/[ACEINOUY]/$ACCENTS{$&}/ge;
+			}
+                if ($q2 eq "OR" || $q2 eq "AND") {
+                            $outq .= " $q2 ";
+                     }
+		elsif ($q2 eq "NOT") { 
+			$nextnot = 1;
+			}
+                else {
+			$q2 =~ s/\_/ /g;
+			if ($nextnot eq 1){ 
+                            $outq .= " AND (".$qt." NOT ".$op." \"". $q2."\")";
+			    $nextnot = 0;
+			    }
+			else {
+			    $outq .= "(".$qt." ".$op." \"". $q2."\")";	
+			    }
+                     }
+         }
+         $outq .= ")";
+	 if ($outq =~ / AND / && $outq =~ / OR /) {
+		$outq =~ s/ AND /) AND (/g;
+		$outq = "(" . $outq . ")";
+		}
+         return $outq;
+}
+

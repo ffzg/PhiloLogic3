@@ -1,0 +1,153 @@
+#!@PERL@ -T
+# -*- perl -*-
+# select.pl.  Generated from select.pl.plin by configure.
+#
+# $Id: select.pl.plin,v 2.10 2004/05/28 18:43:02 o Exp $
+#
+# philologic 2.8 -- TEI XML/SGML Full-text database engine
+# Copyright (C) 2004 University of Chicago
+# 
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the Affero General Public License as published by
+# Affero, Inc.; either version 1 of the License, or (at your option)
+# any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# Affero General Public License for more details.
+# 
+# You should have received a copy of the Affero General Public License
+# along with this program; if not, write to Affero, Inc.,
+# 510 Third Street, Suite 225, San Francisco, CA 94107 USA.
+
+$PHILOSITECFG = "${prefix}/etc/philologic";
+
+$QS = $ENV{'QUERY_STRING'};
+($dbname, $doc) = split ('\.', $QS);
+
+do "$PHILOSITECFG/dbnames";
+$SYSTEM_DIR=$dbnames{"$dbname"};
+
+do "$PHILOSITECFG/philologic.cfg";
+
+unshift (@INC, $SYSTEM_DIR . "lib");
+require "philosubs.pl";
+
+# This should be set someplace else.
+$DEPTH = 3; 
+
+# Going to assume that we have all of the subroutines.
+print &mkTitle;
+print &SelectBiblio($doc);
+
+if (! -e $SYSTEM_DIR . "/navigation/" . $doc) {
+    print "<p>" . $philomessage[254];
+    print &kwicfooter ;
+    exit (1); 
+}
+
+print &mkSelectSearch;
+
+open (IN, $SYSTEM_DIR . "/navigation/" . $doc);
+
+@T = <IN>; 
+$c = 0; 
+
+while ( $c <= $#T && ( &getlevel($T[$c]) != 1 || !&c_notempty($T[$c]) )) {
+    $c++; 
+}
+
+
+if ( $c ) {
+    &printout ( $T[0] );
+}
+
+&childs_recursive ( 1 ); 
+print "</FORM>\n";
+print &kwicfooter ;
+
+# =====================================================================
+# ========================== Subroutines ==============================
+# =====================================================================
+sub childs_recursive {
+    local ( $level ) = $_[0]; 
+    local ( @childs, $c_found = 0 ); 
+    local ( $c_local ); 
+
+    if ( $level == $DEPTH ) {
+	while ( &getlevel ($T[$c]) == $level ) {
+	    if ( $c_found++ || &c_notempty ($T[$c]) ) {
+		&printout ( $T[$c] );
+	    }
+	    $c++;
+	}
+    }
+    else {
+
+	$c_local = $c;
+
+	while ( &getlevel ($T[$c]) == $level ) {
+	    if ( $c_found++ || &c_notempty ($T[$c]) ) {
+		&printout ($T[$c]); 
+	    }
+	    $c++; 
+	    &childs_recursive ( $level + 1 ); 
+	}
+    }
+
+}
+
+sub printout {
+    local ( $line, $level, $tag, $title, $format, $i ); 
+    foreach $line (@_) {
+	 chop $line; 
+	 $level = &getlevel ( $line ); 
+	 ($tag, $title) = split (' ', $line, 2); 
+ 	 $title = "[header]" unless $title; 
+         $title = &NavDivTitle($title);
+
+	if ($title) {
+	    print "<p>" if $level == 1; 
+	    print "<span class=navlevel$level>";
+	    if ($NO_Navigation_Links) {
+	        print "<u>" . $title . "</u>";
+	        }
+	    else { 
+	       print "<a href=\"$PHILOCGI/getobject.pl?c." 
+		     . $tag . "." . $dbname . "\">";
+	    print $title; 
+	    print "</a>";
+	    }
+	
+            if ( $level < 4 ) {
+                print " <INPUT TYPE=\"checkbox\" NAME=\"SELECT" . 
+                $tag . "\" VALUE=\"\">";
+            }
+            print "</span>\n";
+	}
+    }
+}
+
+
+    
+sub getlevel {
+    local ( $node ) = $_[0]; 
+    local ( @index ); 
+
+    @index = split (':', (split(' ', $node))[0]); 
+
+    return $#index; 
+}
+    
+sub c_notempty {
+    local ( $node ) = $_[0]; 
+    local ( @fields ); 
+
+    chop $node; 
+
+    @fields = split (' ', $node); 
+
+    return $#fields; 
+} 
+

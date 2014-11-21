@@ -1,0 +1,82 @@
+<FORM ACTION="XXXCGIPATH/wordfreqgen.pl">
+<input type="hidden" name="dbname" value="XXXDBNAME">
+      <table width = 625>
+        <tr>
+          <td colspan=2><a href="http://www.lib.uchicago.edu/efts/ARTFL/philologic/manual.html#2">Bibliographic Searching</a> in order to limit a search by fields or
+to retrieve selected documents:
+            
+          </td>
+        </tr>
+            
+        <tr>
+          <td width=75>
+            Author:
+          </td>
+
+          <td width = 550 > 
+            <inPUT NAME="author" SIZE=30>
+            (e.g., <tt>hugo</tt>)
+            <INPUT name=xxbrowseauthor type=submit value=Terms> 
+          </td>
+        </tr>
+        <tr>
+          <td width=75>
+            Title: 
+          </td>
+
+          <td width=550 >
+            <inPUT NAME="title" SIZE=30>
+            (e.g., <tt>Notre-Dame</tt>)
+            <INPUT name=xxbrowsetitle type=submit value=Terms> 
+          </td>
+        </tr>
+        <tr>
+          <td width=75>
+            Date:
+          </td>
+
+          <td width=550 >
+            <inPUT NAME="date" SIZE=30> (e.g., <tt>1800-1900</tt>)
+          </td>
+        </tr>
+        <tr>
+          <td width=75>
+            Genre:
+          </td>
+
+          <td width=550 >
+	       <inPUT NAME="genre" SIZE=20> (e.g., <tt>roman</tt>)
+	            <INPUT name=xxbrowsegenre type=submit value=Terms>
+          </td>
+        </tr>
+      </table>
+      <br>
+<p>
+
+            <font size="-1">Note: The vertical line (&nbsp;|&nbsp;) is the OR operator (e.g.,
+<tt>pouvoir|force</tt>). For pattern matching one may employ <a href="http://www.lib.uchicago.edu/efts/ARTFL/philologic/manual.html#wildcard">wildcard characters</a> (e.g., <tt>philoso.*</tt> will retrieve philosophie, philosophique, philosophe, philosophes, phiosopherons, etc.). 
+<a href="http://www.lib.uchicago.edu/efts/ARTFL/philologic/manual.html#3.1">Accented characters</a> may be represented by two characters (e.g.,e\=&egrave;) or uppercase letters. For more help in searching see <a href="#help">User Documentation</a> below.
+            </font>
+
+        <p>
+      <table width=625>
+        <tr>
+          <td width=75  valign=top>
+            <a href="http://www.lib.uchicago.edu/efts/ARTFL/philologic/manual.html#3">Search <br>Text(s) for</a>:
+          </td>
+          <td width=550 >
+            <inPUT NAME="word" SIZE=30>
+
+            (e.g., <tt>maItresse</tt>)
+          </td>
+        </tr>
+      </table>
+      <br>
+       <inPUT TYPE="submit" VALUE="SEARCH"> &nbsp;&nbsp;
+       <inPUT TYPE="reset" VALUE="CLEAR">
+       &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>Show SQL Query:</b> 
+       <INPUT name=showsqlquery type=checkbox value=ON>
+
+       &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>Display Bibliography:</b>
+        <INPUT name=showbiblio type=checkbox value=ON>
+	</form>

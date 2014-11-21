@@ -1,0 +1,151 @@
+#!@PERL@ -T
+# @configure_input@
+#
+# $Id: XXXXXX$
+#
+# philologic 2.8 -- TEI XML/SGML Full-text database engine
+# Copyright (C) 2004 University of Chicago
+# 
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the Affero General Public License as published by
+# Affero, Inc.; either version 1 of the License, or (at your option)
+# any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# Affero General Public License for more details.
+# 
+# You should have received a copy of the Affero General Public License
+# along with this program; if not, write to Affero, Inc.,
+# 510 Third Street, Suite 225, San Francisco, CA 94107 USA.
+
+# MVO NOTES GO HERE.....
+
+$PHILOSITECFG = "@sysconfdir@/philologic";
+do "$PHILOSITECFG/dbnames";
+
+# Get the QUERY_STRING, parse it and evaluate it....
+$QS = $ENV{'QUERY_STRING'};
+@argbuffer = split ("&", $QS);
+@argbuffer = grep (/^[a-zA-Z_0-9]*=.+$/, @argbuffer);
+foreach $arg (@argbuffer) {
+       $arg =~ m/^([A-Za-z_0-9]*\=[A-Za-z0-9:\.\/\%]*)/;
+       $arg = $1;
+       $arg = '$' . $arg;
+       $arg =~ s/%../pack("H2", substr($&,1))/ge;
+       $arg =~ s/^(.[^=]*=)(.*$)/$1'$2'/;
+       eval $arg;
+       }
+
+# Check the database name supplied.  Untaints and prints out generic
+# error message if it is not a valid name.
+if ($dbname =~ /^([[:alnum:]]+)$/) { 
+        $dbname = $1;                           # $dbname now untainted 
+        } 
+else { 
+        print "Content-type: text/html; charset=UTF-8\n\n"; 
+        print "<p>\n<p>\n" . sprintf($philomessage[235], $dbname);
+        exit;
+    }
+
+# Get SYSTEM_DIR from the database names file in /etc/philologic/dbnames
+# Generic error message if not found.
+$SYSTEM_DIR=$dbnames{"$dbname"};
+if (!$SYSTEM_DIR) {
+        print "Content-type: text/html; charset=UTF-8\n\n";
+        print "<p>\n<p>\n" . sprintf($philomessage[236], $dbname);
+        exit;
+    }
+
+# Load the database specific subroutine library and configurations.
+# Generic error message if lib/philosubs.pl is not found.
+$filetest = $SYSTEM_DIR . "/lib/philosubs.pl";
+if (! -e $filetest) {
+        print "Content-type: text/html; charset=UTF-8\n\n";
+        print "<p>\n<p>\n" . sprintf($philomessage[237], $dbname);;
+        exit;
+    }       
+$filetest = "";
+unshift (@INC, $SYSTEM_DIR . "/lib");
+require "philosubs.pl";
+
+# Initialize.....
+$ARTFL_BIN = "$PHILOCGI";
+$HITLISTS_DIRECTORY = "$PHILODATADIR/hitlists/";
+$datafile = "$HITLISTS_DIRECTORY" . "kwicresortdata." . $theid;
+$bibfile = "$HITLISTS_DIRECTORY" . "kwicresortbib." . $theid;
+$infofile = "$HITLISTS_DIRECTORY" . "hitlist." . $theid . ".info";
+$thetargetfile = "$PHILOTMP" . "/kwicsort." . $theid;
+
+print &kwicheader;
+
+# If you can't find the hitlist, tell the user and exit.
+if (!(-e $datafile)) {
+    print $philomessage[238] . "\n";
+    print &kwicfooter;
+    exit (0);
+}
+
+$sf = " -k " . $sortfield1 . "," . $sortfield1;
+$sf .= " -k " . $sortfield2 . "," . $sortfield2;
+$sf .= " -k " . $sortfield3 . "," . $sortfield3 . " ";
+
+
+$thecommand = "sort -T $PHILOTMP -t\"\|\" $sf";
+$thecommand .= "< $datafile  | $GAWK -F\"\|\" '{ print \$NF }' > $thetargetfile ";
+
+if ($debug) {
+print "<pre>";
+print "$QS\n";
+print "$dbname \n";
+print "$theid \n";
+print "$sortfield1\n";
+print "$sortfield2\n";
+print "$sortfield3\n";
+print "$datafile\n";
+print "$bibfile\n";
+print "$infofile\n";
+print "$thecommand\n";
+print "</pre>";
+}
+
+#print "<p><tt>$QS</tt>";
+#print "<p><tt>$thecommand\n</tt><p>";
+
+system ("$thecommand");
+
+if (!(-e $thetargetfile)) {
+	print $philomessage[239];
+	print &kwicfooter;
+	exit (0);
+}
+
+# print "<p><center><b>" . $philomessage[240] . "</b></center></p>\n";
+$sortkeytodisplay = &GetKwicResortLabels($sortfield1, $sortfield2, $sortfield3);
+
+print "<p><center><b>";
+print sprintf($philomessage[308], $sortkeytodisplay);
+print "</b>.</center></p>\n";
+print &KwicResortForm($theid);
+
+open (SORTED, "$thetargetfile");
+while ($linein = <SORTED>) {
+	print $linein;
+	}
+close (SORTED);
+ 
+if (!$OMITKWICSORTBIBLIOGRAPHY) {
+	print "<center><h2>" . $philomessage[209] . "</h2></center>\n";
+	open (BIBFILE, $bibfile);
+	while ($linein = <BIBFILE>) {
+		print $linein;
+		}
+	close(BIBFILE);
+}
+
+system ("rm $thetargetfile");
+
+print &kwicfooter;
+exit(0);
+

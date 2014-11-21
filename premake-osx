@@ -1,0 +1,37 @@
+#!/bin/sh
+
+# NOTE: If you've downloaded the philologic OS X tarball, you don't need to run this script.
+# Use this script to convert a standard linux distribution into a more Mac-friendly package.
+# Required Mac-specific install files: hitunpack.c.osx, e-n2.c.osx, p-t2.c.osx
+# Copy this file into the root philologic install directory and then run: ./premake-osx
+
+perl -p -i -e 's/libunpack_e\.so/libunpack_e.bundle/gi' loader.xmake*
+
+cd search-engine
+perl -p -i -e 's/libunpack_e\.so/libunpack_e.bundle/gi' Makefile*
+perl -p -i -e 's/\$\(CC\) \$\(CFLAGS\) -nostdlib -shared unpack\.lo -lc -o libunpack_e\.bundle/MACOSX_DEPLOYMENT_TARGET=10.3 \$(CC) \$(CFLAGS) -bundle -bundle_loader \/bin\/search3 -undefined dynamic_lookup unpack.lo -lc -o libunpack_e.bundle/gi' Makefile*
+perl -p -i -e 's/-fPIC/-fno-common/gi' Makefile*
+
+cd ../pack
+mv e-n2.c e-n2.c.linux
+cp ../goodies/OSX/pack/e-n2.c.osx e-n2.c
+mv p-t2.c p-t2.c.linux
+cp ../goodies/OSX/pack/p-t2.c.osx p-t2.c
+
+cd ../search3
+perl -p -i -e 's/libunpack_e\.so/libunpack_e.bundle/gi' Makefile*
+perl -p -i -e 's/\$\(CC\) \$\(CFLAGS\) \$\(PH_CFLAGS\) \$\(LDFLAGS\) search3\.o args\.o search\.o retreive\.o gmap\.o word\.o blockmap\.o level\.o out\.o log\.o -ldl -lindex \.\.\/search-engine\/getresource\.o \.\.\/search-engine\/bitsvector\.o -lunpack_e -lgdbm -o search3 -Wl,--export-dynamic/MACOSX_DEPLOYMENT_TARGET=10.3 \$(CC) \$(CFLAGS) \$\(PH_CFLAGS\) \$(LDFLAGS) -undefined dynamic_lookup search3.o args.o search.o retreive.o gmap.o word.o blockmap.o level.o out.o log.o -ldl -lindex ..\/search-engine\/getresource.o ..\/search-engine\/bitsvector.o -lgdbm -o search3\n/gi' Makefile*
+
+cd unpack
+perl -p -i -e 's/libunpack_e\.so/libunpack_e\.bundle/gi' Makefile*
+perl -p -i -e 's/-shared/-bundle/gi' Makefile*
+perl -p -i -e 's/-fPIC/-fno-common/gi' Makefile*
+
+cd ../plugin
+perl -p -i -e 's/libunpack_e\.so/libunpack_e\.bundle/gi' Makefile*
+mv hitunpack.c hitunpack.c.linux
+cp ../../goodies/OSX/search3/plugin/hitunpack.c.osx hitunpack.c
+
+cd ../../etc
+perl -p -i -e 's/PHILORUNUSER = \"65534\"/PHILORUNUSER = \"nobody\"/gi' philologic.cfg.in
+perl -p -i -e 's/PHILORUNGROUP = \"505\"/PHILORUNGROUP = \"nogroup\"/gi' philologic.cfg.in

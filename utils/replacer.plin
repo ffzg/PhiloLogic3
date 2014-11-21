@@ -1,0 +1,64 @@
+# $Id: replacer.plin,v 2.1 2004/08/23 21:45:03 o Exp $
+
+# philologic 2.8 -- TEI XML/SGML Full-text database engine
+# Copyright (C) 2004 University of Chicago
+# 
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the Affero General Public License as published by
+# Affero, Inc.; either version 1 of the License, or (at your option)
+# any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# Affero General Public License for more details.
+# 
+# You should have received a copy of the Affero General Public License
+# along with this program; if not, write to Affero, Inc.,
+# 510 Third Street, Suite 225, San Francisco, CA 94107 USA.
+
+$NUMERIC = "pagemarks.numeric";
+$ALPHA = "pagemarks.alpha";
+
+$n = `tail -1 $NUMERIC`; chop $n;
+
+open (F, $ALPHA);
+
+while (<F>)
+{
+    chop; 
+    $M{$_} = ++$n;
+}
+
+while (<>)
+{
+    chop;
+    split;
+
+#    print STDERR "bad line: " . $_ . "\n" unless $#_ == 3;
+
+    $p = $_[$#_];
+
+#    if ( $p =~ /n=\"[0-9]+:[0-9]+\"/ ) # temp fix!
+#    {
+#	$p =~ s/n=\"[0-9]+://;
+#	$p =~ s/\"//;
+#    }
+
+    $p = "?" if $p eq "";
+
+    $p = $M{$p} unless $p =~ /^[0-9]+$/;
+
+#    print STDERR "pagemark not registered: " . $_ . "\n" 
+#	unless $p;
+
+#  local hack:
+
+    $p = $M{'?'} unless $p; 
+
+    $_[$#_] = $p;
+
+    $_ = join (" ", @_);
+
+    print $_ . "\n";
+}

@@ -1,0 +1,48 @@
+# $Id: newdocs.plin,v 2.1 2004/08/23 21:45:03 o Exp $
+
+# philologic 2.8 -- TEI XML/SGML Full-text database engine
+# Copyright (C) 2004 University of Chicago
+# 
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the Affero General Public License as published by
+# Affero, Inc.; either version 1 of the License, or (at your option)
+# any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# Affero General Public License for more details.
+# 
+# You should have received a copy of the Affero General Public License
+# along with this program; if not, write to Affero, Inc.,
+# 510 Third Street, Suite 225, San Francisco, CA 94107 USA.
+
+#
+# Replaces utils/newdocs to handle SQL fielded bibliographic data rather
+# than refer format.  Argument is where to find the texts files in the 
+# work directory, usually "TEXTS".  
+# Input is a bibliography file, with the last 3 fields being salient.
+# filename, filesize, document id.  These are tab delimited fields.
+# Output looks like:
+# 0 TEXTS FS000456.txt 7733
+# being the document id, the supplied argument, filename and filesize.
+
+if ( $#ARGV != 0 ) {
+     print STDERR "newdocs: Bad arguments!\n";
+     exit 1;
+  }
+
+$WHERE = $ARGV[0];
+
+open (NEW, "bibliography");
+
+while (<NEW>) {
+          chop;
+	  $inline = $_;
+          @results = split(/\t/, $inline);
+	  $numfields = $#results;
+	  $philodocid = $results[$numfields];
+	  $filesize = $results[$numfields - 1];
+	  $filename = $results[$numfields - 2];
+	  print "$philodocid $WHERE $filename $filesize\n";
+	  }

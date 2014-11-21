@@ -1,0 +1,36 @@
+# $Id: Makefile.in,v 2.14 2004/11/16 00:44:05 o Exp $
+# @configure_input@
+
+include ../load.cfg
+
+CFLAGS= @CFLAGS@
+CC= @CC@
+PERL= @PERL@
+
+PH_CFLAGS = -I../include
+LDFLAGS = -L../libraries
+
+TARGETS = enprefix unprefix packing-info rawindex replacer seeknread splitter mkbibliography mkbiblio split newdocs textload mkbiblio-twig dublin.extract dividxhashmake.pl
+
+
+%:	%.plin ../load.cfg
+	echo \#\!$(PERL) | cat - $*.plin >$@
+	chmod +x $@
+
+everything: $(TARGETS)
+
+textload: $(TEXTLOAD) ../load.cfg
+	echo \#\!$(PERL) | cat - $(TEXTLOAD) >$@
+	chmod +x $@
+
+mkbibliography: $(MKBIBLIOGRAPHY) ../load.cfg
+	echo \#\!$(PERL) | cat - $(MKBIBLIOGRAPHY) >$@
+	chmod +x $@
+
+dist-clean:
+	rm -f $(TARGETS)
+
+clean: dist-clean
+
+
+

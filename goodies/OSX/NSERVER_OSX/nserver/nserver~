@@ -1,0 +1,33 @@
+#!/bin/sh
+
+. /etc/rc.common
+
+NSERVER=-YES-
+
+shkillall() {            # a port of killall                                                                                                                                                                  
+        pid=`ps -e | grep $1 |                                                                                                                                                                      
+             sed -e 's/^  *//' -e 's/ .*//'`
+        [ "$pid" != "" ] && kill $pid
+}
+
+StartService ()
+{
+ConsoleMessage "Starting NServer"
+/Library/WebServer/CGI-Executables/philologic//nserver.pl &
+}
+
+StopService ()
+{
+ConsoleMessage "Stopping NServer"
+shkillall nserver.pl
+}
+
+RestartService ()
+{
+ConsoleMessage "Restarting NServer"
+shkillall nserver.pl
+sleep 1
+/Library/WebServer/CGI-Executables/philologic//nserver.pl &
+}
+
+RunService "$1"

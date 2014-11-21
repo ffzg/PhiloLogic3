@@ -1,0 +1,51 @@
+# installdir/Makefile.  Generated from Makefile.in by configure.
+# $Id: Makefile.in,v 2.12 2004/08/23 21:45:03 o Exp $
+include ../load.cfg
+
+PERL= /usr/bin/perl
+EGREP = /usr/bin/grep -E
+
+TARGETS = mkdocinfo mkpagelist gimme gimme.sql mkreferences crapser-egrep-2field make_wom_words.R  makeforms_gold.pl subdocgimme subdocgimme.sql
+
+SOURCES = Makefile.in VERSION crapser-egrep-2field.plin gimme.plin gimme.sql.in make_wom_words_R.plin mkdocinfo.plin mkpagelist.sh mkreferences.plin  makeforms_gold.pl subdocgimme.plin subdocgimme.sql.plin
+
+%:	%.plin
+	echo \#\!$(PERL) | cat - $*.plin >$@
+	chmod +x $@
+
+%:      %.sh
+	echo \#\!$(SH) | cat - $*.sh >$@
+	chmod +x $@
+
+everything: $(TARGETS)
+
+crapser-egrep-2field: crapser-egrep-2field.plin
+	../config.status --file=crapser-egrep-2field:crapser-egrep-2field.plin
+	chmod +x $@
+
+gimme: gimme.plin
+	echo \#\!$(PERL) | cat - gimme.plin | sed 's:\.\.\.EGREP\.\.\.:$(EGREP):' >$@
+	chmod +x $@
+
+gimme.sql: gimme.sql.in
+	echo \#\!$(PERL) | cat - gimme.sql.in >$@
+	chmod +x $@
+
+subdocgimme: subdocgimme.plin
+	echo \#\!$(PERL) | cat - subdocgimme.plin | sed 's:\.\.\.EGREP\.\.\.:$(EGREP):' >$@
+	chmod +x $@
+
+subdocgimme.sql: subdocgimme.sql.plin
+	echo \#\!$(PERL) | cat - subdocgimme.sql.plin >$@
+	chmod +x $@
+
+dist-clean:
+	rm -f $(TARGETS) *~
+
+clean: dist-clean	
+
+install:
+	/usr/bin/install -c -d ${prefix}/var/lib/philologic/installdir
+	/usr/bin/install -c $(SOURCES) ${prefix}/var/lib/philologic/installdir
+	cd lib && make $@
+

@@ -1,0 +1,24 @@
+
+$first = 1;
+
+#print "{0, 0, 0, 0, 0, 0},\n";
+
+while (<>)
+   {
+       chop;
+       split;
+
+       if ($first)
+       {
+	   for ( $i = 0; $i < $#_; $i++)
+	   {
+	       push (@f, '0');
+	   }
+	   print "{" . join (", ", @f) . "},\n";
+	   $first = 0;
+       }
+
+       pop (@_);
+       print "{" . join (", ", @_) . "},\n";
+   }
+

@@ -1,0 +1,66 @@
+These are the parts to integrate the Northwestern virtual 
+normalization data. I have NOT included this data.  We have
+it running for EEBO-TCP.  It requires a modified crapser, which 
+takes arguments supplied by a patch in search3t and a three
+field words.R.wom
+
+You need to create a 3 field words.R.wom file in the database
+directory from the Mapping file (MappedSpellings.txt).  I used
+the included mergetab.pl for my first try.  The words.R.wom
+file should look like:
+
+  MOD    <tab>    ORIG    <tab>  ROOT
+jealously       iealouslye      jealous
+
+The ORIG word (field two) is the index entry word, so this is
+the one sent to the system for searching.
+
+I have included a commented virtnorm.crapser which should be 
+copied and modified as requires to the database directory.  
+This is, as noted, dumb as bricks.  Really should be fixed.
+
+And then you need to add the interface to search3t ... basically
+to pass the new arguments to crapser.  Again, should be standard.
+
+============================ search3t ============================
+ADD below
+   push (@command, "crapser");
+
+# --------------------------------------------------------------
+# Assuming that your search form has an ORTHMODE box......
+if ($ORTHMODE) {
+        if ($ORTHMODE =~ /LEM/i){
+             $mvocrapcommand =  "-lem";
+        }
+        elsif ($ORTHMODE =~ /ORG/i){
+             $mvocrapcommand =  "-org";
+        }
+        else {
+             $mvocrapcommand = "-mod";
+        }
+}
+# --------------------------------------------------------------
+REPLACE 
+# --------------------------------------------------------------
+foreach $w (@words) {
+    @FromCrapser = &TalktoExpand ($w, @command);
+    @FromCrapser = sort @FromCrapser;
+# --------------------------------------------------------------
+WITH
+# --------------------------------------------------------------
+foreach $w (@words) {
+    if ($mvocrapcommand) {
+        @FromCrapser = &TalktoExpand ($w, @command, $mvocrapcommand);
+        }
+    else {
+        @FromCrapser = &TalktoExpand ($w, @command);
+    }
+    @FromCrapser = sort @FromCrapser;
+# --------------------------------------------------------------
+# ===================================================================
+
+This is a one off modification, basically a proof of concept.  We would
+want to be a bit more coherent if we were going to make normalized
+or lemma searching a standard feature.  Not much data yet.
+
+

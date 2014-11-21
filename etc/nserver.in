@@ -1,0 +1,30 @@
+#! /bin/sh
+# $Id: nserver.in,v 2.11 2004/05/28 19:21:55 o Exp $
+N=@cgi_path@/nserver.pl
+
+shkillall() {            # a port of killall
+        pid=`@PS@ -e | @GREP@ $1 |
+             @SED@ -e 's/^  *//' -e 's/ .*//'`
+        [ "$pid" != "" ] && kill $pid
+}
+
+
+case "$1" in
+    start)
+    if [ -x $N ]
+	then
+	$N > @localstatedir@/lib/philologic/nserver.log 2>&1 &
+    fi
+    ;;
+
+  stop)
+  shkillall nserver.pl
+	;;
+
+  *)
+	echo "Usage: $0 {start|stop}" >&2
+	exit 1
+	;;
+esac
+
+exit 0

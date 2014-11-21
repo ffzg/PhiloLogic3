@@ -1,0 +1,185 @@
+#!@PERL@ -T
+# -*- perl -*-
+# showrest_.  Generated from showrest_.plin by configure.
+#
+# $Id: showrest_.plin,v 2.10 2004/05/28 18:43:02 o Exp $
+#
+# philologic 2.8 -- TEI XML/SGML Full-text database engine
+# Copyright (C) 2004 University of Chicago
+# 
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the Affero General Public License as published by
+# Affero, Inc.; either version 1 of the License, or (at your option)
+# any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# Affero General Public License for more details.
+# 
+# You should have received a copy of the Affero General Public License
+# along with this program; if not, write to Affero, Inc.,
+# 510 Third Street, Suite 225, San Francisco, CA 94107 USA.
+
+$PHILOSITECFG = "${prefix}/etc/philologic";
+
+do "$PHILOSITECFG/dbnames";
+
+do "$PHILOSITECFG/philologic.cfg";
+
+    if ($ARGV[0] =~ /^([[:alnum:].:]+)$/) { 
+	$cleanargv0 = $1; 			# $CORPUS now untainted 
+        } 
+    else { 
+	die "Dirty input in URL: $ARGV[0]"; 	# log this somewhere 
+    }
+
+
+($rep, $conj, $nw, $id, $start, $finish, $dbname, $smallchunks)  = split (/\./, $cleanargv0); 
+
+$sys_dir=$dbnames{"$dbname"};
+
+unshift (@INC, $sys_dir . "/lib");
+require "philosubs.pl";
+
+$ARTFL_BIN = "$PHILOCGI";
+$HITLISTS_DIRECTORY = "$PHILODATADIR/hitlists/";
+$OBJECT_SERVER = "$PHILOCGI/getobject_";
+
+$printlimit = 10000;
+
+# End of i.d.s.
+
+
+$|=1;
+$ENV{'PATH'} = $sys_dir . ":" . $PHILOCGIPATH . ":/bin:/usr/bin";
+$ENV{'SYSTEM_DIR'} = $sys_dir;
+$HITLIST = "hitlist." . $id;
+$DEPTH = 7 unless $DEPTH; 
+$HITSIZE = ( $DEPTH - 1 ) * 2 + $nw * 4;
+$SCRIPT = $DEPTH == 7 ? "artfl" : "encyc";
+
+# Print the report header.
+eval ("print &" . $rep . "header"); 
+
+# If you can't find the hitlist, tell the user and exit.
+if (!(-e "$HITLISTS_DIRECTORY/" . $HITLIST)) {
+    print $philomessage[238] . "\n";
+    exit (0);
+}
+
+# Presumably you can find the info file and print the contents.
+if ( -e "$HITLISTS_DIRECTORY/" . $HITLIST . ".info") {
+    open INFO_H, "$HITLISTS_DIRECTORY/" . $HITLIST . ".info";
+    print $philomessage[295] . ": <b>" . <INFO_H> . "</b>";
+    $number_of_docs = <INFO_H>; chop $number_of_docs;
+    $number_of_docs = $philomessage[301] unless $number_of_docs;
+    print "(<b>" . $number_of_docs . "</b> " . $philomessage[294] . ")<br>\n";
+    print $philomessage[255] . ": <b>" . <INFO_H> . "</b><p>\n";
+    close INFO_H;
+}
+
+$stillinprogress = 0;
+
+# If we are done, let's print a top side navigation bar.
+if ( -e "$HITLISTS_DIRECTORY/" . $HITLIST . "._") {
+    $stillinprogress = 0;
+    $length = int ((stat("$HITLISTS_DIRECTORY/" . $HITLIST))[7] / ($HITSIZE));
+    print sprintf($philomessage[176], $length);
+    $howmany = int($length/100); 
+    $hitnavbar = &HitNavigationLine($rep, $conj, $nw, $id, $start, $length);
+    if ($hitnavbar) {
+       print "<center>";
+       print $philomessage[256];
+       print " (" . sprintf($philomessage[257], $HITBLOCKSIZE) . ")<br>";
+       print $hitnavbar;
+       print "</center>\n";
+       }
+    if ($howmany > 1) {
+          print "<p><A HREF=\"$PHILOCGI/showrest_?$rep.$conj.$nw.$id.0" . "." . 
+         ($length-1) . "." . $dbname . "\">" . $philomessage[258] . "</A>";
+         print " (" . $philomessage[259] . ")" if $length > 500;
+         }
+    }
+else {
+    $length = int ((stat("$HITLISTS_DIRECTORY/" . $HITLIST))[7] / ($HITSIZE));
+    print "<i>" . $philomessage[260] . "</i><p>\n";
+    $stillinprogress++;
+    }    
+
+if ($start + 99 < $length && ( $finish - $start < 99 ) && !$smallchunks ) {
+    $finish = $start + 99; 
+}
+
+
+
+# Here we are going to print some hits.
+$chrep = $rep eq "conc" ? "kwic" : "conc";
+# Added $chrep_mvo for display purposes....  MVO 04-05-99
+if ($chrep eq "conc") {
+	$chrep_mvo = $philomessage[261];
+	}
+else {
+	$chrep_mvo = $philomessage[262];
+	}
+
+print "<p>";
+print "<A HREF=\"$PHILOCGI/showrest_?$chrep.$conj.$nw.$id.$start.$finish.";
+print $dbname . "\">" . sprintf($philomessage[177], $chrep_mvo) . "</A><p>\n";
+
+# Print the hits of this block.
+print "<H2>" . $philomessage[263] .  " " . ($start+1) . "-" . ($finish+1) . ":</H2>\n";
+
+system ($SCRIPT . "_" . "$rep.pl $conj $nw $HITLISTS_DIRECTORY/hitlist.$id $start $finish $dbname");
+       print "<hr>\n";
+
+
+if ($stillinprogress) {
+    if (-e "$HITLISTS_DIRECTORY/" . $HITLIST . "._") {
+      $length = int((stat("$HITLISTS_DIRECTORY/".$HITLIST))[7]/($HITSIZE));
+      print "FRED " . sprintf($philomessage[176], $length) . "<p>\n";
+      $stillinprogress = 0; 
+      }
+    else {
+      $length = int ((stat("$HITLISTS_DIRECTORY/" . $HITLIST))[7] / ($HITSIZE));
+       print sprintf($philomessage[264], $length); 
+       if ( $length != 25 ) {
+	    print $philomessage[265] . "<p>\n";
+	    }
+       else {
+	    print $philomessage[266] . "<p>\n";
+	    }
+     }
+	
+}
+
+
+$length = int ((stat("$HITLISTS_DIRECTORY/" . $HITLIST))[7] / ($HITSIZE));
+
+if (!$hitnavbar && !$stillinprogress) {
+    $hitnavbar = &HitNavigationLine($rep, $conj, $nw, $id, $start, $length);
+	}
+
+if ($hitnavbar) {
+       print "<center>";
+       print $philomessage[256];
+       print " " . sprintf($philomessage[257], $HITBLOCKSIZE) . "<br>";
+       print $hitnavbar;
+       print "</center>\n";
+       }
+if (!$stillinprogress && $howmany > 1 ) {
+    print "<p>";
+    print "<A HREF=\"$PHILOCGI/showrest_?$rep.$conj.$nw.$id.0" . "." . 
+          ($length-1) . "." . $dbname . "\">" . $philomessage[181] . "</A>";
+    print " " . $philomessage[182] if $length > 500;
+}
+
+print "<p>";
+
+print "<A HREF=\"$PHILOCGI/showrest_?$chrep.$conj.$nw.$id.$start.$finish.";
+print $dbname . "\">" . sprintf($philomessage[177], $chrep_mvo) . "</A><p>\n";
+
+eval ("print &" . $rep . "footer"); 
+
+exit(0);
+

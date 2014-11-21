@@ -1,0 +1,493 @@
+#!@PERL@
+# -*- perl -*-
+# @configure_input@
+#
+# $Id: plainbiblio.plin,v 1.1 2004/11/16 00:47:38 o Exp $
+#
+# philologic 2.8 -- TEI XML/SGML Full-text database engine
+# Copyright (C) 2004 University of Chicago
+# 
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the Affero General Public License as published by
+# Affero, Inc.; either version 1 of the License, or (at your option)
+# any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# Affero General Public License for more details.
+# 
+# You should have received a copy of the Affero General Public License
+# along with this program; if not, write to Affero, Inc.,
+# 510 Third Street, Suite 225, San Francisco, CA 94107 USA.
+# -------------------------------------------------------------
+# Extensively modified metadata builder for plaintext.  In this
+# version, it tries to grab standard GUTENBERG project information
+# often found in "header" sections.  These are usually found as
+# ^Title: 
+# ^Author:
+# I did not bother with the date, since these are usually date
+# of deposit, rather than a useful date of publication or 
+# composition.  If nothing else, it puts the file name in as
+# the title.  
+# -------------------------------------------------------------
+$intfs = "<fs/>";   # Don't touch this for now.  Using it as
+                    # an internal field seperator when you have
+                    # multiple entries.
+# Begin and End at the beginning and the end.
+$ENDTAG = "<\/head>";
+$STARTTAG = "<head>";
+
+# Some databases seem to have many years associated, so we will try
+# to get the earliest if this is set.
+$getearliestyear = 0;
+
+# Some DC headers have unmarked quotes in quotes (BAD).  So, let's set
+# a flag 1 = get content=".*">  or 0 = content="[^"]"  
+$contentatend = 1; 
+# =================================================================
+$TEXTDIR = $ARGV[0];
+$filelist = $ARGV[1];
+
+if ($ARGV[2] eq "-debug") {
+        $debug = 1;
+	}
+
+# Read in the list of files
+
+chomp($filelist);
+open FILEINTXT, "$filelist";
+while ($filename = <FILEINTXT>) {
+   $filename =~ s/\n//g;
+   if ($debug) {
+   	print "$filename\n";
+	}
+
+# Put the whole document header as a string.
+   $thewholething = "";
+   $intheheader = 0;
+   $pathandfile = $TEXTDIR . "/" . $filename;
+   $thisdoctitle = "";
+   $thisdocauthor = "";
+   open (THEXMLFILE, $pathandfile);                # Check to see if opened?
+   while ($inline = <THEXMLFILE>) {
+        $inline =~ s/\015/ /g;
+	if ($inline =~ /^Title:/i && !$thisdoctitle) {
+		$thisdoctitle = $inline;
+		$thisdoctitle =~ s/Title://i;
+		$thisdoctitle =~ s/\n//;
+		$thisdoctitle =~ s/^ +//;
+		}
+	if ($inline =~ /^Author:/i && !$thisdocauthor) {
+		$thisdocauthor = $inline;
+		$thisdocauthor =~ s/Author://i;
+		$thisdocauthor =~ s/\n//;
+		$thisdocauthor =~ s/^ +//;
+		}
+        }
+   close (THEXMLFILE);
+   $filesize = -s("$pathandfile");
+   $inline =~ s/\n//;
+
+# If debug, let the user know this is the offender
+if ($debug) {
+	print STDERR "Extracting metadata from $filename = $filesize\n";
+}
+
+# We have read the header.  Now, let's extract the fields we want,
+# build a sortkey, and push this on to a list.  We like things
+# sorted by date.
+
+    &recordbuilder();
+    $recordwithkey = $thesortkey . "\t" . $theoutrecord;
+    push (@thebibliolist, $recordwithkey);
+    foreach $key (keys(%PATHWORDS)) {
+	delete $PATHWORDS{$key};
+	}
+    foreach $key (keys(%dublincore)) {
+	delete $dublincore{$key};
+	}
+}
+
+# ================= END OF THE FILES =============================
+# Now, we sort them, add the documentcounter to the record and strip
+# the sort key.
+
+$documentcounter = 0;
+@sortlist = sort @thebibliolist;
+
+foreach $bibline (@sortlist) {
+        $bibline =~ s/^[^\t]*\t//;                 # Strip the sort key
+        $bibline =~ s/\n//;                        # Delete the newline
+        $bibline .= "\t" . $documentcounter . "\n";
+        $documentcounter += 1;
+        print $bibline;
+        }
+exit 0;
+
+# ========================== Subroutines ==============================
+#
+# Subroutine: this builds the tab delimited record.  
+sub recordbuilder() {
+	
+# Field One: Title of the document
+	$sourcetitle = $thisdoctitle;
+	if (!$sourcetitle) {
+		$sourcetitle = $filename ;
+		$sourcetitle =~ s/\.txt//i;
+		}
+	$sourcetitle =~ s/\_/ /g;
+	$theoutrecord = $sourcetitle . "\t";
+
+# Field Two: Author of the document
+	$sourceauthor =  $thisdocauthor;
+        if (!$sourceauthor) {
+                $sourceauthor = "";
+                }
+	$theoutrecord .= $sourceauthor . "\t";
+
+# Field Three: The YEAR and get other dates to output later
+# We want a 4 integer year for searching and sorting.  Try first
+# to get a creation date and a publication date.  Set the YEAR
+# to creation date and then to publication date and look for
+# 4 ints.
+	$creationdate =  $dublincore{"date"};
+	$sourcedate = $creationdate;
+	if ($sourcedate =~ /[A-Za-z\-\[\]\.\?\*\;\/ \<\>\,]/) {
+	    if ($publicationdate =~ m/([0-9][0-9][0-9][0-9])/) {
+	    	$sourcedate = $1;
+		}
+	}
+	if ($sourcedate > 100 && $sourcedate < 1000) {
+		$sourcedate = "0" . $sourcedate;
+		$sourcedate =~ s/^00/0/;
+		}
+	if ($sourcedate < 1) {
+		$sourcedate = "9999";
+		}
+	$theoutrecord .= $sourcedate . "\t";
+
+# Field Four: Genre 
+	$sourcegenre = $dublincore{"type"};
+	$theoutrecord .= $sourcegenre . "\t";
+
+# Field Five: Publisher	
+	$sourcepublisher = $dublincore{"publisher"};
+	$theoutrecord .= $sourcepublisher . "\t";
+
+# Field Six: Publication Place
+	$sourcepubplace = $dublincore{"NOVALUE"};
+	$theoutrecord .= $sourcepubplace . "\t";
+
+# Field Seven: Extent, typically pagination and the like.
+	$extent =  $dublincore{"NOVALUE"};
+	$theoutrecord .= $extent . "\t";
+
+# Field Eight: Editors
+	$editors =  $dublincore{"contributor"};
+        $theoutrecord .= $editors . "\t";
+
+# Field Nine: Publication Date from above without modification 
+	$theoutrecord .= $publicationdate . "\t";
+
+# Field Ten: Creation Date from above without modification
+	$theoutrecord .= $creationdate . "\t";
+
+# Field Eleven: Author Dates.  We see alot of that.
+	$authordates = $dublincore{"NOVALUE"};
+	$theoutrecord .= $authordates . "\t";
+
+# Field Twelve: Keywords
+	$keywords = $dublincore{"NOVALUE"};
+	$theoutrecord .= $keywords . "\t";
+
+# Field Thirteen: Language
+        $doclanguage =  $dublincore{"areaspec"};
+	$theoutrecord .= $doclanguage . "\t";
+
+# Field Fourteen: Collection/Series
+       $doccollection = $dublincore{"NOVALUE"};
+       $theoutrecord .= $doccollection . "\t";
+
+# Field Fifteen: Author Gender
+	$gender = $dublincore{"gender"};
+	$theoutrecord .= $gender  . "\t";
+
+# Field Sixteen: SourceNote
+        $docnote = $dublincore{"rights"};
+	$docnote =~ s/<fs\/>/ /g;
+	$docnote =~ s/ +/ /g;
+	$theoutrecord .= $docnote . "\t";
+
+# Field Seventeen: Period
+	$docperiod = $dublincore{"NOVALUE"};;
+	$theoutrecord .= $docperiod . "\t";
+
+# Field N-3: Identifier.  We want a "Short Cite" without spaces
+# to allow a KWIC with a reference.  Use identifiers if they are
+# found and the filename if not.
+
+	$filedescidno =  $dublincore{"identifier"};
+        if (!$filedescidno) {
+		$filedescidno = $filename;
+		$filedescidno =~ s/\..*$//;
+		$filedescidno =~ s/.*\///g;
+		}
+	$filedescidno =~ s/  *$//;
+	$filedescidno =~ s/^  *//;
+	$filedescidno =~ s/ /:/g;
+	$theoutrecord .= $filedescidno . "\t";
+
+# Field N-2: the filename
+	$theoutrecord .= $filename . "\t";
+# Field N-1: the filesize (a holdover not needed anymore.  
+	$theoutrecord .= $filesize ;
+# Field N, the last one is added after sorting.
+
+# Let's clean up anything that we might need.
+	$theoutrecord =~ s/\t +/\t/g;
+	$theoutrecord =~ s/\n/ /g;
+	$theoutrecord =~ s/<fs\/><fs\/>/<fs\/>/g;
+	$theoutrecord =~ s/<fs\/> *\t/\t/g;
+	$theoutrecord =~ s/\t<fs\/>/\t/g;
+	$theoutrecord =~ s/ +<fs\/>/<fs\/>/g;
+	$theoutrecord =~ s/<fs\/> +/<fs\/>/g;
+	$theoutrecord =~ s/<fs\/><fs\/>/<fs\/>/g;
+
+# Now, let's make up a sortkey.  I like year, author, title.  Lord
+# knows this can be modified.  This sets the output display for
+# concordance and KWIC results, so chronology is best.  I'm an historian.
+# Go figure.  :-)
+	if ($sourcedate eq "NA") {
+		$sourcedate = "9999";
+		}
+
+	if ($sourceauthor =~ / /) {
+		@thisnames = split(/ /, $sourceauthor);
+		$thelastname = @thisnames[$#thisname];
+		$sourceauthor = $thelastname . " " . $sourceauthor;
+		}
+
+	if (!$sourceauthor) {
+		$sourceauthor = "zzzz";
+		}
+	$thesortkey = $sourcedate ." ". $sourceauthor ." ". $sourcetitle;
+	$thesortkey =~ tr/A-Z/a-z/;
+	if ($debug) {
+		print "========================================\n";
+		print "$thesortkey --> $theoutrecord \n";
+		print "========================================\n";
+		}
+
+        $sourcetitle = "";
+        $sourceauthor = "";
+        $sourcedate = "";
+        $sourcegenre = "";
+        $sourcepublisher = "";
+        $sourcepubplace = "";
+        $filedescauthor = "";
+        $filedesctitle = "";
+        $filedescpublisher = "";
+        $filedescpubplace = "";
+        $filedescdate = "";
+        $filedescidno = "";
+
+}
+
+# Subroutine: clean up the words, since we will be using these to
+# search and display the bibliographic data.
+sub wordhandler() {
+	local ($thewords);
+	$thewords = $_[0];
+	$thewords = &iso2ents($thewords);
+   	$thewords = &charents2utf8($thewords);
+	$thewords = &charentconvert($thewords);	
+	return $thewords;
+}
+
+# Subroutine: convert character ents.  Should come from a table.
+sub charentconvert () {
+	local ($thewords);
+	$thewords = $_[0];
+	$thewords =~ s/\&apos;/\'/gi;
+	$thewords =~ s/\&rsquo;/\'/gi;
+	$thewords =~ s/\&hyphen;/\-/gi;
+	$thewords =~ s/\&colon;/\:/gi;
+	$thewords =~ s/\&ldquo;/\"/gi;
+	$thewords =~ s/\&rdquo;/\"/gi;
+	$thewords =~ s/\&quot;/\"/gi;
+	$thewords =~ s/\&dash;/\-/gi;
+        $thewords =~ s/\&dot;/\./g;
+        $thewords =~ s/\&dollar;/\$/gi;
+        $thewords =~ s/\&lsquo;/`/g;
+        $thewords =~ s/\&quest;/\?/g;
+        $thewords =~ s/\&excl;/\!/g;
+        $thewords =~ s/\&blank;/ /g;
+        $thewords =~ s/\&colon;/:/g;
+        $thewords =~ s/\&ast;/\*/g;
+        $thewords =~ s/\&mdash;/-/gi;
+	return $thewords;
+}
+
+# =================================================================
+# Subroutine: charents2utf8 converts ISO-LATIN-1 character entities in
+# index words to UTF-8 for standard word index search consistency.  
+# This is for SGML data sets and XML that have character ents rather
+# than UTF-8 characters.  Should probably come from a table
+# =================================================================
+
+sub charents2utf8 () {
+     local ($theword); 
+     $theword = $_[0];
+     $theword =~ s/\&Agrave;/\xc3\x80/g; 
+     $theword =~ s/\&Aacute;/\xc3\x81/g; 
+     $theword =~ s/\&Acirc;/\xc3\x82/g;
+     $theword =~ s/\&Atilde;/\xc3\x83/g;
+     $theword =~ s/\&Auml;/\xc3\x84/g;
+     $theword =~ s/\&Aring;/\xc3\x85/g;
+     $theword =~ s/\&Ccedil;/\xc3\x87/g;
+     $theword =~ s/\&Egrave;/\xc3\x88/g;
+     $theword =~ s/\&Eacute;/\xc3\x89/g;
+     $theword =~ s/\&Ecirc;/\xc3\x8A/g;
+     $theword =~ s/\&Euml;/\xc3\x8B/g;
+     $theword =~ s/\&Igrave;/\xc3\x8C/g;
+     $theword =~ s/\&Iacute;/\xc3\x8D/g;
+     $theword =~ s/\&Icirc;/\xc3\x8E/g;
+     $theword =~ s/\&Iuml;/\xc3\x8F/g;
+     $theword =~ s/\&ETH;/\xc3\x90/g;
+     $theword =~ s/\&Ntilde;/\xc3\x91/g;
+     $theword =~ s/\&Ograve;/\xc3\x92/g;
+     $theword =~ s/\&Oacute;/\xc3\x93/g;
+     $theword =~ s/\&Ocirc;/\xc3\x94/g;
+     $theword =~ s/\&Otilde;/\xc3\x95/g;
+     $theword =~ s/\&Ouml;/\xc3\x96/g;
+     $theword =~ s/\&#215;/\xc3\x97/g; # MULTIPLICATION SIGN
+     $theword =~ s/\&Oslash;/\xc3\x98/g;
+     $theword =~ s/\&Ugrave;/\xc3\x99/g;
+     $theword =~ s/\&Uacute;/\xc3\x9A/g;
+     $theword =~ s/\&Ucirc;/\xc3\x9B/g;
+     $theword =~ s/\&Uuml;/\xc3\x9C/g;
+     $theword =~ s/\&Yacute;/\xc3\x9D/g;
+     $theword =~ s/\&THORN;/\xc3\x9E/g;
+     $theword =~ s/\&agrave;/\xc3\xA0/g;
+     $theword =~ s/\&aacute;/\xc3\xA1/g;
+     $theword =~ s/\&acirc;/\xc3\xA2/g;
+     $theword =~ s/\&atilde;/\xc3\xA3/g;
+     $theword =~ s/\&auml;/\xc3\xA4/g;
+     $theword =~ s/\&aring;/\xc3\xA5/g;
+     $theword =~ s/\&ccedil;/\xc3\xA7/g;
+     $theword =~ s/\&egrave;/\xc3\xA8/g;
+     $theword =~ s/\&eacute;/\xc3\xA9/g;
+     $theword =~ s/\&ecirc;/\xc3\xAA/g;
+     $theword =~ s/\&euml;/\xc3\xAB/g;
+     $theword =~ s/\&igrave;/\xc3\xAC/g;
+     $theword =~ s/\&iacute;/\xc3\xAD/g;
+     $theword =~ s/\&icirc;/\xc3\xAE/g;
+     $theword =~ s/\&iuml;/\xc3\xAF/g;
+     $theword =~ s/\&eth;/\xc3\xB0/g;
+     $theword =~ s/\&ntilde;/\xc3\xB1/g;
+     $theword =~ s/\&ograve;/\xc3\xB2/g;
+     $theword =~ s/\&oacute;/\xc3\xB3/g;
+     $theword =~ s/\&ocirc;/\xc3\xB4/g;
+     $theword =~ s/\&otilde;/\xc3\xB5/g;
+     $theword =~ s/\&ouml;/\xc3\xB6/g;
+     $theword =~ s/\&#247;/\xc3\xB7/g;   #  DIVISION SIGN
+     $theword =~ s/\&oslash;/\xc3\xB8/g;
+     $theword =~ s/\&ugrave;/\xc3\xB9/g;
+     $theword =~ s/\&uacute;/\xc3\xBA/g;
+     $theword =~ s/\&ucirc;/\xc3\xBB/g;
+     $theword =~ s/\&uuml;/\xc3\xBC/g;
+     $theword =~ s/\&yacute;/\xc3\xBD/g;
+     $theword =~ s/\&thorn;/\xc3\xBE/g;
+     $theword =~ s/\&yuml;/\xc3\xBF/g;
+return $theword;
+
+}
+
+sub getfirstyear {
+	local ($sourcedate, @sortedlist, @listofyears, $x);
+	$sourcedate = $_[0];
+	while ($sourcedate =~ /[0-9][0-9][0-9][0-9]/) {
+		$sourcedate =~ s/([0-9][0-9][0-9][0-9])//;
+		$ayear = $1;
+		push (@listofyears, $ayear);
+		$x += 1;
+		last if $x > 20;
+		}
+	@sortedlist = sort @listofyears;
+	$sourcedate = $sortedlist[0];
+return $sourcedate;
+}
+
+
+sub iso2ents {
+local ($words);
+$words = $_[0];
+
+$words =~ s/\306/&AElig;/g;
+$words =~ s/\301/&Aacute;/g;
+$words =~ s/\302/&Acirc;/g;
+$words =~ s/\300/&Agrave;/g;
+$words =~ s/\305/&Aring;/g;
+$words =~ s/\303/&Atilde;/g;
+$words =~ s/\304/&Auml;/g;
+$words =~ s/\307/&Ccedil;/g;
+$words =~ s/\320/&ETH;/g;
+$words =~ s/\311/&Eacute;/g;
+$words =~ s/\312/&Ecirc;/g;
+$words =~ s/\310/&Egrave;/g;
+$words =~ s/\313/&Euml;/g;
+$words =~ s/\315/&Iacute;/g;
+$words =~ s/\316/&Icirc;/g;
+$words =~ s/\314/&Igrave;/g;
+$words =~ s/\317/&Iuml;/g;
+$words =~ s/\321/&Ntilde;/g;
+$words =~ s/\323/&Oacute;/g;
+$words =~ s/\324/&Ocirc;/g;
+$words =~ s/\322/&Ograve;/g;
+$words =~ s/\330/&Oslash;/g;
+$words =~ s/\325/&Otilde;/g;
+$words =~ s/\326/&Ouml;/g;
+$words =~ s/\336/&THORN;/g;
+$words =~ s/\332/&Uacute;/g;
+$words =~ s/\333/&Ucirc;/g;
+$words =~ s/\331/&Ugrave;/g;
+$words =~ s/\334/&Uuml;/g;
+$words =~ s/\335/&Yacute;/g;
+$words =~ s/\341/&aacute;/g;
+$words =~ s/\342/&acirc;/g;
+$words =~ s/\346/&aelig;/g;
+$words =~ s/\340/&agrave;/g;
+$words =~ s/\xE0/&agrave;/g;
+$words =~ s/\345/&aring;/g;
+$words =~ s/\343/&atilde;/g;
+$words =~ s/\344/&auml;/g;
+$words =~ s/\347/&ccedil;/g;
+$words =~ s/\351/&eacute;/g;
+$words =~ s/\352/&ecirc;/g;
+$words =~ s/\350/&egrave;/g;
+$words =~ s/\360/&eth;/g;
+$words =~ s/\353/&euml;/g;
+$words =~ s/\355/&iacute;/g;
+$words =~ s/\356/&icirc;/g;
+$words =~ s/\354/&igrave;/g;
+$words =~ s/\357/&iuml;/g;
+$words =~ s/\361/&ntilde;/g;
+$words =~ s/\363/&oacute;/g;
+$words =~ s/\364/&ocirc;/g;
+$words =~ s/\362/&ograve;/g;
+$words =~ s/\370/&oslash;/g;
+$words =~ s/\365/&otilde;/g;
+$words =~ s/\366/&ouml;/g;
+$words =~ s/\337/&szlig;/g;
+$words =~ s/\376/&thorn;/g;
+$words =~ s/\372/&uacute;/g;
+$words =~ s/\373/&ucirc;/g;
+$words =~ s/\371/&ugrave;/g;
+$words =~ s/\374/&uuml;/g;
+$words =~ s/\375/&yacute;/g;
+$words =~ s/\377/&yuml;/g;
+
+return $words;
+
+}

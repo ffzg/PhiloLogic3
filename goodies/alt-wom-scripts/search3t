@@ -1,0 +1,2569 @@
+#!/usr/bin/perl -T
+# -*- perl -*-
+# search3t.  Generated from search3t.plin by configure.
+#
+# $Id: search2t.plin,v 2.11 2004/06/09 20:07:28 o Exp $
+#
+# philologic 2.8 -- TEI XML/SGML Full-text database engine
+# Copyright (C) 2004 University of Chicago
+# 
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the Affero General Public License as published by
+# Affero, Inc.; either version 1 of the License, or (at your option)
+# any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# Affero General Public License for more details.
+# 
+# You should have received a copy of the Affero General Public License
+# along with this program; if not, write to Affero, Inc.,
+# 510 Third Street, Suite 225, San Francisco, CA 94107 USA.
+
+no strict "refs";
+# require 5.002;      You can enable this if you want
+$PHILOSITECFG = "${prefix}/etc/philologic";
+do "$PHILOSITECFG/dbnames";
+do "$PHILOSITECFG/philologic.cfg";
+
+# We need to set a separate cgi-bin path, overriding the one in 
+# "$PHILOSITECFG/philologic.cfg";
+ 
+$PHILOCGIPATH = "/Volumes/data/cgi-bin/philodsal";
+
+
+# ======================= Preliminaries ==============================
+# Get the input values and check these. Get database SYSTEM DIR, load
+# philosubs.pl and database configuration. Set up additional values
+# Generate error messages as required.
+# ====================================================================
+# Get the QUERY_STRING, parse it and evaluate it....
+$QS = $ENV{'QUERY_STRING'};
+@argbuffer = split ("&", $QS);
+@argbuffer = grep (/^[a-zA-Z_0-9]*=.+$/, @argbuffer);
+foreach $arg (@argbuffer) {
+       $arg =~ s/\%3A/:/g;
+       $arg =~ s/\%2C/,/g;
+       $arg =~ s:\%2F:/:g;
+       $arg =~ s:\%20: :g;
+       $arg =~ s/\%60//g;
+       $arg =~ m/(\s*)=/;
+       $arg =~ m/=(\s*)/;
+       my ($var, $value) = split(/\s*=\s*/, $arg, 2);
+       $$var = $value;
+#             $multiw allows the users to select from similar word
+#             search checkboxes.  Merge them into $word here.
+       if ($multiw) {  
+                $word .= $multiw . "|";
+                $multiw = "";
+	  }
+#             $multidocid allows the users to select from bibliography
+#             search checkboxes.  Merge them into $mphilodocids here.
+       if ($multidocid) {
+		push (@mphilodocids, $multidocid);
+		$gotmultidocid++;
+		$multidocid = "";
+		}
+       }
+
+# Remove trailing "|" that we may get from merging multiwd above.
+if ($word =~ /\|$/) {
+      $word =~ s/\|$//;
+      }
+
+# Right here we have some custom hacked-in stuff to make philologic word like romadict
+# The romadict form has one text input and radio buttons to select whether you want to
+# searcht the entire database or just headwords, and a check box for exact matches.
+# We therefore check these values and set up the values the way Philo wants them for 
+# such searches.
+
+# Remove trailing spaces
+$query =~ s/\+*$//g;
+
+if ($matchtype eq "exact") {
+    $fuzzyedges = "";
+} else {
+    $fuzzyedges = ".*";
+}
+
+# Put the wildcard around the edge of each word (spaces)
+# Actually, we should put it around every wordbreaking character,
+# shouldn't we?
+
+$searchterm = $fuzzyedges . $query . $fuzzyedges;
+$searchterm =~ s/\+/$fuzzyedges\+$fuzzyedges/g;
+
+
+
+
+if ($searchhws eq "yes") {
+    $dgdivhead = $searchterm;
+} else {
+    $word = $searchterm;
+}
+
+
+# Check the database name supplied.  Untaints and prints out generic
+# error message if it is not a valid name.
+if ($dbname =~ /^([[:alnum:]]+)$/) { 
+	$dbname = $1; 			        # $dbname now untainted 
+        } 
+else { 
+	print "Content-type: text/html; charset=UTF-8\n\n"; 
+	print "<p>\n<p>\nInvalid Database name: $dbname";
+	print ".  Contact $ERRORCONTACT.";
+	exit;
+    }
+
+# Get SYSTEM_DIR from the database names file in /etc/philologic/dbnames
+# Generic error message if not found.
+$SYSTEM_DIR=$dbnames{"$dbname"};
+if (!$SYSTEM_DIR) {
+	print "Content-type: text/html; charset=UTF-8\n\n";
+	print "<p>\n<p>\nDatabase name not registered: $dbname";
+        print ".  Contact $ERRORCONTACT.";
+        exit;
+    }
+
+# Load the database specific subroutine library and configurations.
+# Generic error message if lib/philosubs.pl is not found.
+$filetest = $SYSTEM_DIR . "/lib/philosubs.pl";
+if (! -e $filetest) {
+        print "Content-type: text/html; charset=UTF-8\n\n";
+        print "<p>\n<p>\nCannot find philosubs.pl for $dbname";
+        print ".  Contact $ERRORCONTACT.";
+        exit;
+    }       
+$filetest = "";
+unshift (@INC, $SYSTEM_DIR . "/lib");
+require "philosubs.pl";
+
+# Access Control.  We now have a database to talk to and the database
+# specific parameters.  Let's see if we can run this search.
+
+if ($PhiloLogicAccesControl) {
+	$filetest = $SYSTEM_DIR . "/lib/security.ph";
+	if (! -e $filetest) {
+		$LINKDICT = 0;
+		print &mkTitle;
+		print "<p>\n<p>\n";
+		print "Cannot find required access control module for ";
+		print $dbname;
+		print ". Contact $ERRORCONTACT.";
+		print &kwicfooter;
+		exit (0);
+		}
+	require "security.ph";
+	if (!&security_check) {
+		$LINKDICT = 0;
+		print &mkTitle;
+		print "<p>\n<p>\n";
+		print $REJECT_MESSAGE;
+		print "<p>Requesting Computer Address: ";
+		if ($host) {
+			print "$host ";
+			}
+		if ($ip) {
+			print " $ip";
+			}
+		print "\n";
+		print &kwicfooter;
+		exit (0);
+		}
+	}
+
+
+# This sets parameters for the socket to talk to nserver.pl.  We should 
+# check for errors here.  I have implemented a check when we actually
+# connect to the socket.  Using the die function is not really helpful
+# since this just lets the WWW interface just hang.  Check here as well?
+use Socket;
+use Carp;
+my ($remote, $port, $iaddr, $paddr, $proto, $line);
+$remote  = 'localhost';
+if (!$PHILONSERVERPORT) {     # should be from general philo config.
+        $PHILONSERVERPORT = "2346";
+        }
+$port    = $PHILONSERVERPORT;
+
+die "No port" unless $port;
+$iaddr   = inet_aton($remote)               || die "no host: $remote";
+$paddr   = sockaddr_in($port, $iaddr);
+$proto   = getprotobyname('tcp');
+
+# This should be set in site config, but just in case.....
+if (!$PHILOSEARCHLIMIT) {
+	$PHILOSEARCHLIMIT = 1000000;
+	}
+
+# Gee, I did not know we had a debug function.  I suspect that we 
+# don't usse this at all.  But we'll leave it for now.
+$debug = 1, shift @ARGV if $ARGV[0] eq "-d";
+
+# More variable setting....
+$|=1;
+$ENV{'PATH'} = $SYSTEM_DIR . ":" . $PHILOCGIPATH . ":/bin:/usr/bin";
+$ENV{'SYSTEM_DIR'} = $SYSTEM_DIR;
+$RESULTS = "$PHILODATADIR/hitlists";
+$CORPUS = "$PHILOTMP/corpus.$$";
+$DIVCORPUS = "$PHILOTMP/divcorpus.$$";
+$HITLIST = $RESULTS . "/hitlist." . $$;
+$parid = $$;
+
+# We get into all kinds of problems if we find an existing hitlist.
+# Check and delete if found.  This is probably because the cron job
+# deleting these files after X (3) hours has died.  
+if (-e $HITLIST) {
+        system ("rm -f $HITLIST" . "*");
+        }
+
+# Check user selected output options.
+if ($OUTPUT eq "kwic" || $OUTPUT eq "KWIC") {
+        $KWIC="ON";
+        }
+if ($OUTPUT eq "SORTEDKWIC" || $OUTPUT eq "sortedkwic") {
+        $SORTEDKWIC="ON";
+	$KWSS =~ m/([1-4])/;
+	$KWSS = $1;
+	$KWSSPRLIM =~ m/([0-9]*)/;
+	$KWSSPRLIM = $1;
+	$FREQREPORT = 1;
+        }
+if ($OUTPUT eq "TF" || $OUTPUT eq "tf") {
+        $TF="ON";
+	$FREQREPORT = 1;
+        }
+if ($OUTPUT eq "TRSORT" || $OUTPUT eq "trsort") {
+	$TRSORT = "ON";
+	$FREQREPORT = 1;
+	}
+if ($OUTPUT eq "TFRATE" || $OUTPUT eq "tfrate") {
+        $TFRATE="ON";
+	$FREQREPORT = 1;
+        }
+if ($OUTPUT eq "AF" || $OUTPUT eq "af") {
+        $AF="ON";
+	$FREQREPORT = 1;
+        }
+if ($OUTPUT eq "AFRATE" || $OUTPUT eq "afrate") {
+        $AFRATE="ON";
+	$FREQREPORT = 1;
+        }
+if ($OUTPUT eq "PF" || $OUTPUT eq "pf") {
+        $PF="ON";
+	$FREQREPORT = 1;
+        }
+if ($OUTPUT eq "THMRHM" || $OUTPUT eq "thmrhm") {
+        $THMRHM="ON";
+	$THMPRTLIMIT =~ m/([1-4])/;
+	$themeprintlimit = $1;
+	if (!$themeprintlimit) {
+		$themeprintlimit = 1;
+		}
+	$FREQREPORT = 1;
+       }
+if ($OUTPUT eq "DF" || $OUTPUT eq "df") {
+        $DF="ON";
+	$FREQREPORT = 1;
+        }
+if ($OUTPUT eq "DFRATE" || $OUTPUT eq "dfrate") {
+        $DFRATE="ON";
+	$FREQREPORT = 1;
+        }
+if ($OUTPUT eq "freqbyhead" || $OUTPUT eq "FREQBYHEAD") {
+        $FREQBYHEAD="ON";
+        $FREQREPORT = 1;
+        }
+if ($SIMWORD eq "ON" || $SIMWORD eq "on") {
+        $OUTPUT = "SIMWORD"
+        }
+$REPORT = $KWIC ? 'kwic' : 'conc';
+
+# Check CONJUNCT and DISTANCE arguments, untaint them.  Set some
+# defaults as required and print odd things to the error log for now.
+if ( $CONJUNCT =~ m/^([[:alnum:]]+)$/ ) {
+    $CONJUNCT = $1;
+    }
+else { 
+    print STDERR "PhiloLogic: Conjunct = $CONJUNCT Reset to PHRASE\n";
+    $CONJUNCT = "PHRASE";
+    }
+if ($DISTANCE =~ m/^(\d+)$/) {
+    $DISTANCE = $1;
+    }
+else { 
+    print STDERR "PhiloLogic: Distance = $DISTANCE Reset to 3\n";
+    $DISTANCE = 3;
+    }
+
+# We should really check to see if CONJUNCT is within limits and
+# fix them.  This would be an error from search forms.  But humans
+# make mistakes.
+    $s3opt = "phrase";
+if ($CONJUNCT eq "PHRASE") {
+    $s3opt = "phrase";
+    $CONJUNCT = 6; 
+  }
+elsif ($CONJUNCT eq "PROXY") {
+     $s3opt = "proxy";
+     if ($DISTANCE) {
+     	$s3opt .= ":" . ($DISTANCE + 1);
+	}
+     $CONJUNCT = 6; 
+  }
+else { 
+     $s3opt = "cooc";
+     if ($CONJUNCT) {
+     	$s3opt .= ":" . $CONJUNCT;
+	}
+     $CONJUNCT = $CONJUNCT == 6 ? 6 : $CONJUNCT + 1; 
+  }
+
+# End Preliminaries.
+# ==================== Start the Search ========================
+# There are several different search options which we will check
+# and either run or halt with an error message.  We start here 
+# because we are printing out the header.
+# ==============================================================
+# Print the Header ... maybe this should go earlier, but it must
+# be after we find philosubs.pl.
+
+print &mkTitle;
+
+# General Philo debugging to the screen.  
+if ($PhiloDeBugDump) {
+	print "<hr>PhiloLogic DeBugging Dump is on.  Turn debugging off
+              change <tt>PhiloDeBugDump</tt> <b>$dbname</b> config
+              file <tt>philo-db.cfg</tt> to 0.  <br><b>General variables</b>:";
+	print "<pre>";
+	print "HTTP+QUERY_STRING=$QS\n";
+	print "SYSTEM_DIR=$SYSTEM_DIR\n";
+	print "PHILOSEARCH3T=$PHILOSEARCH3T\n";
+	print "PHILOTIMEOUT=$PHILOTIMEOUT (.05sec)\n";
+	print "WListLimit=$WListLimit\n";
+	print "HITBLOCKSIZE=$HITBLOCKSIZE\n";
+	print "NAVLINEBLOCKLENGTH=$NAVLINEBLOCKLENGTH\n";
+	print "PHILOHISTDIR=$PHILOHISTDIR\n";
+	print "ALLOWHISTORY=$ALLOWHISTORY\n";
+	print "PhiloLogicAccesControl=$PhiloLogicAccesControl\n\n";
+	print "SQLenabled=$SQLenabled\n";
+	print "SQLDATABASEname=$DATABASE\n";
+	print "SQLCONNECTSTRING=$CONNECTSTRING\n";
+	print "SQLBIBTABLE=$TABLE\n";
+	print "subdocSQLenabled=$subdocSQLenabled\n";
+	print "SQLDIVTABLENAME=$SQLDIVTABLENAME\n";
+	print "SQLSUBDIVTABLENAME=$SQLSUBDIVTABLENAME\n\n";
+	print "PHILOCGIPATH=$PHILOCGIPATH\n";
+	print "PHILOCGI=$PHILOCGI\n";
+	print "PHILODATADIR=$PHILODATADIR\n";
+	print "AGREP=$AGREP\n";
+	print "PHILONAVIGATE=$PHILONAVIGATE\n";
+	print "PHILOGETOBJECT=$PHILOGETOBJECT\n";
+	print "PATH=$ENV{PATH}\n";
+	print "NOTEWINDOWPARAMS=$NOTEWINDOWPARAMS\n";	
+	print "</pre>";
+	print "<b>Query parameters</b>: ";
+	print "<pre>";
+	print "OUTPUT=$OUTPUT\n";
+	if ($QS =~ /xxbrowse/) {
+		print "TERMSBROWSE=ON\n";
+		}
+	print "HITLIST=$HITLIST\n";
+	print "CORPUS=$CORPUS\n";
+	print "DIVCORPUS=$DIVCORPUS\n";
+	print "KEEPHISTORY=$KEEPHISTORY\n";
+	print "CONJUNCT=$CONJUNCT\n";
+	print "DISTANCE=$DISTANCE\n";
+	print "</pre><hr>\n";
+}
+
+# Experimental History Function: Only for search3t functions, which
+# is all search function.  No point in doing this for navigation or
+# object contextualization, since these are state dependent.  KEEPHISTORY
+# is set by the user, ALLOWHISTORY and PHILOHISTDIR are in
+# philo-db.cfg.  PHILOHISTDIR should almost certainly go in SITECONFIG
+
+if ($KEEPHISTORY && !$ALLOWHISTORY) {
+	print "<p>Warning: PhiloLogic Search history not enabled by
+                  configuration.  Contact $ERRORCONTACT </p>";
+	}
+		
+
+if ($KEEPHISTORY && $ALLOWHISTORY && $PHILOHISTDIR) {
+        if (-e $PHILOHISTDIR) {
+                &WritePhiloHistory();
+                }
+        else {
+                print "<p>Warning: PhiloLogic Search history folder not
+                       found.  Contact $ERRORCONTACT </p>";
+                }
+}
+
+
+# User Selected Similarity Search using agrep.  This calls &SimilarWord
+# found in lib/philosubs.pl
+if ($OUTPUT eq "SIMWORD") {
+      &SimilarWord();
+      print &kwicfooter;
+      exit 0;
+      }
+
+# If you have a word pattern to search for, we will handle them now.
+# Calls two subroutines in format.ph
+if ($word) {
+	$word = &clean_word_pattern($word);
+	if ($PhiloDeBugDump) {
+		print "<p><tt>DEBUG: WORDPATTERN=$word</tt><p>";
+		}
+	$showthem = &pattern_to_show($word);
+	}
+
+# Check to see if we have a NOT in the word search argument.  This should
+# be word+NOT+word or word !word.   If we have it, check to make sure we don't
+# have a leading NOT and bail with message if we do.
+if ($word =~ /\+NOT\+/ || $word =~ /^NOT+/ || $word =~ /!/) {
+	if ($s3opt =~ /cooc/) {
+		print "<p>The logical <b>NOT</b> operator is not enabled for
+                       proximity searches (within the same sentence or
+                       paragraph) at this time.  You may use the <b>NOT</b>
+                       operator for searches with a selected number of words.
+                       <p>";
+		print &kwicfooter;
+		exit 0;
+	        }
+
+         if ($word =~ /!\+/) {
+		$word =~ s/\+/ /g;
+		print "<p>Invalid syntax: $word <br>";
+		print "The <b>!</b> operator may not be followed by a space.";
+		print &kwicfooter;
+                exit 0;
+		}
+	
+# Get the depth and yes/not sequence for search3: 
+# -E:N=3:B=101 where N = number of query terms
+# and B = sequence of words, 0 being the NOT terms.
+	$textNOTquery = &mkNOTtextquery($word);
+	$word =~ s/\+NOT\+/\+/g;                  # remove NOT operators from
+	$word =~ s/!//g;                          # the words....
+	$word =~ s/^(NOT\+)//;
+	if ($PhiloDeBugDump) {
+		print "<p><tt> DEBUG: NOTSTRING: $textNOTquery<br></tt>";
+		print "<p><tt> DEBUG: NOTWORDPAT: $word<br></tt>";
+		}
+	}
+
+# Bail gracefully if the user has a multi word pattern and wants
+# a collocation analysis, theme-rheme, or a sorted KWIC
+if ($PF || $THMRHM || $SORTEDKWIC) {
+        if ($showthem =~ / /) {
+		print "<p>";
+	        if ($PF) {
+		       print "A Collocation Table can only be generated
+		              for a single word or word pattern (e.g.,
+			      concord*).";
+		       }
+	        elsif ($SORTEDKWIC) {
+		       print "A Sorted Line by Line (KWIC) Report
+		              can only be generated for a single word 
+			      or word pattern (e.g., concord*).";
+		       }
+		else {
+		       print "A Word in Clause Position Report can 
+		              only be generated for a single word or 
+			      word pattern (e.g., concord*).";
+		       }
+		print "<p>";
+		print &kwicfooter;
+                exit 0;
+        }
+}
+
+# ==========================================================================
+# ==================== BIBLIOGRAPHIC SEARCH HANDLING =======================
+# ==========================================================================
+# We have three different kinds of metadata selection here.
+# 1) Generate a bibliography without running a word search [gimme]
+# 2) Generate a list of document identifiers (philodocids)
+#    for searching restricted to particular documents [gimme]
+# 3) Print the list of subdocument identifiers for searching
+#    selected parts of a document from the search parts report.
+# Functions 1 and 2 are handled by gimme, which may be the
+# SQL enabled version or the sequential version, selected in the
+# database configuration file.  Function 3 simply outputs the
+# users selected arguments.
+
+# The first IF here sets the switch between standard bibliographic
+# searches and searching inside of particular documents.  
+
+# Let's see if we have some DIV or SUBDIV args and check them.
+  foreach $arg (@DIVINDEX_FIELDS) {
+	eval ( "\$divindex_arg .= \" $arg=\" . \$$arg if \$$arg;" );
+	}
+
+  foreach $arg (@SUBDIVINDEX_FIELDS) {
+	eval ( "\$subdivindex_arg .= \" $arg=\" . \$$arg if \$$arg;" );
+	}
+
+if ($PhiloDeBugDump) {
+	print "<p><tt>DEBUG:divindex_arg=$divindex_arg</tt><br>";
+	print "<tt>DEBUG:subdivindex_arg=$subdivindex_arg</tt><p>";
+	}
+# Check to see if these make sense.  We are not permitting chained
+# object search functions at this time, so if you have values
+# for both, reject it.
+if ($divindex_arg && $subdivindex_arg) {
+	print "<br>Found values for both divindex and subdivindex
+              searching.  This is not permitted at this time.  Please
+              respecify your search to include only one level.";
+	print "<p>";
+	print &kwicfooter;
+	exit (0);
+}
+
+
+if (!$dgdivhead && !$word) {
+    print "<b>No search terms entered.</b> Please go back and enter something to search for.<p>";
+    print &kwicfooter;
+    exit (0);
+}
+
+if (!$subdocSQLenabled) {
+    if ($subdivindex_arg =~ /\+NOT\+/ || $subdivindex_arg =~ /\+AND\+/) {
+        print "<p>The logical operators NOT and AND are unavailable for
+               SubDiv level searching in this database installation.  
+               Please use lower case <b>not</b> and <b>and</b> as search 
+               terms.<p>";
+	print "Contact $ERRORCONTACT if you think this should
+	       be added to the database.";
+        print &kwicfooter;
+        exit 0;
+    }
+
+    if ($divindex_arg =~ /\+NOT\+/ || $divindex_arg =~ /\+AND\+/) {
+        print "<p>The logical operators NOT and AND are unavailable for
+               Div level searching in this database installation.  
+               Please use lower case <b>not</b> and <b>and</b> as search 
+               terms.<p>";
+        print "Contact $ERRORCONTACT if you think this should
+               be added to the database.";
+        print &kwicfooter;
+        exit 0;
+        }
+}
+
+# Here we are going to dump the binary ints of the user selected
+# docids  from the bibliography report with document select checkboxes
+# to the CORPUS file, which we will use again later.  IMPORTANT NOTE:
+# these may need to be sorted on numerically for SQL generated 
+# bibliographies, which can be out of document order.
+if ($gotmultidocid) {
+	open (TTFILE, ">$CORPUS");
+	if ($PhiloDeBugDump) {
+		print "<p><tt>DEBUG: multidocid: ";
+		}
+	foreach $multidocid (@mphilodocids){
+		if ($PhiloDeBugDump) {
+			print " $multidocid ";
+			}
+		if ($multidocid =~ /^[0-9]*$/) {
+			print TTFILE pack("i", $multidocid);
+			}
+		else {
+			print "Invalid character in docid: $multidocid<br>";
+			}
+		}
+ 	close (TTFILE);	
+	if ($PhiloDeBugDump) {
+		print "</tt><p>\n";
+		}
+}
+
+# This switch is to allow for DOCUMENT=0;  MVO fix Sept 1 '03
+# If you have a length in DOCUMENT, then you run the select
+# function.   This used to check for !$DOCUMENT which failed
+# on document 0.
+$documentlength = length($DOCUMENT);
+if (!$documentlength) {                 # RUN A STANDARD BIBLIOGRAHPIC
+                               		# QUERY HERE.  Different kinds 
+					# of results are forced for word
+					# searches and biblio only searches.
+    foreach $arg ( @Biblio_Fields ) {
+	eval ( "\$gimme_arg .= \" $arg=\" . \$$arg if \$$arg;" );
+    }
+
+# Untaint and clean-up metadata arguments.  Taint mode thinks this 
+# is tainted, but we if we can't trust the source of these args then 
+# we can't really function because we accept just all kinds of characters
+# and words.
+    $gimme_arg =~ m/(.*)/;
+    $gimme_arg = $1;
+    &clean_corpus_pattern;
+
+if ($PhiloDeBugDump) {
+	print "<p><tt>DEBUG: gimme_arg=$gimme_arg</tt><p>";
+	}
+
+# ==================== Terms Browse and Exit ============================
+# If the query string has the terms browse button hit, run this
+# and exit.  See subroutine in philosubs.pl for more info.
+    if ($QS =~ /xxbrowse/) {
+        if ($SQLenabled) {
+        	&BrowseAvailableTerms($gimme_arg);
+		}
+	else {
+		print "This database installed without SQL support. ";
+		print "Terms browsing unavailable.  Please contact ";
+		print "$ERRORCONTACT.";
+	        }
+        print &kwicfooter;
+        exit 0;
+	}
+
+# ==================== DIV LEVEL Terms Browse and Exit ====================
+# If the query string has the terms browse button hit, run this
+# and exit.  See subroutine in philosubs.pl for more info.
+    if ($QS =~ /yybrowse/) {
+        if ($subdocSQLenabled) {
+                &BrowseSubDocTerms($divindex_arg, "div");
+                }
+        else {
+                print "This database installed without DIV level SQL support. ";
+                print "Terms browsing unavailable.  Please contact ";
+                print "$ERRORCONTACT.";
+                }
+        print &kwicfooter;
+        exit 0;
+        }
+
+# ==================== SUBDIV LEVEL Terms Browse and Exit ====================
+# If the query string has the terms browse button hit, run this
+# and exit.  See subroutine in philosubs.pl for more info.
+    if ($QS =~ /zzbrowse/) {
+        if ($subdocSQLenabled) {
+                &BrowseSubDocTerms($subdivindex_arg, "subdiv");
+                }
+        else {
+                print "This database installed without SUBDIV level SQL 
+                       support. ";
+                print "Terms browsing unavailable.  Please contact ";
+                print "$ERRORCONTACT.";
+                }
+        print &kwicfooter;
+        exit 0;
+        }
+
+# ==================== Whole database Div Search and Exit ===============
+if ($divindex_arg && !$gimme_arg && !$word) {
+	$divindexarg2display = &subdocargs2display($divindex_arg); 
+	if ($divindexarg2display =~ /=(.*)$/) {
+	    $divindexarg2display = $1;
+	}
+	#print "Searching for <b>$divindexarg2display</b> in the 
+        #      whole database. ";
+	&searchsubdoctable("verbose");
+	if (-s $DIVCORPUS) {
+		$outbuffer = "";
+		$x = 0;
+
+
+		if ($divindex_arg ne "") {
+		    $searchfor = $divindex_arg;
+		} else {
+		    $searchfor = $dgdivhead;
+		}
+
+		open (VERBOSEFILE, $DIVCORPUS);
+		while ($linein = <VERBOSEFILE>) {
+		        if ($linein =~ /\s$divindexarg2display\s/i) {
+			    $outbuffer .= &DivDisplayLine($linein);
+			    $x++;
+			}
+
+	       	}
+		close(VERBOSEFILE);
+		system ("rm -f $DIVCORPUS $DIVCORPUSOLD");
+		print "A search found <b>$x</b> entries with <b>$divindexarg2display</b> in the entry word.<hr>";
+		print $outbuffer;
+	}
+	else {
+		print "A search of dictionary entry words for <b>$divindexarg2display</b> did not locate any occurrences.";
+	}
+	print &kwicfooter;
+        exit 0;
+}
+
+# ==================== Whole database SubDiv Search and Exit ===============
+if ($subdivindex_arg && !$gimme_arg && !$word) {
+	$subdivindexarg2display = &subdocargs2display($subdivindex_arg);
+	print "Searching for <b>$subdivindexarg2display</b> in the
+	      whole database. ";
+	&searchsubdoctable("verbose");
+	if (-s $DIVCORPUS) {
+		$outbuffer = "";
+		$x = 0;
+		open (VERBOSEFILE, $DIVCORPUS);
+		while ($linein = <VERBOSEFILE>) {
+			if ($linein =~ /:\-1\t/) {
+				$donothing = 0;
+				}
+			else {
+				$x++;
+				$outbuffer .= &SubDivDisplayLine($linein);
+			}
+		}
+		close(VERBOSEFILE);
+		system ("rm -f $DIVCORPUS");
+		print "Found $x objects. <p>";
+		print $outbuffer;
+	}
+	else {
+		print "<p><b>No objects found</b>. <p>";
+		}
+	print &kwicfooter;
+        exit 0;
+}
+# ==========================================================================
+
+# Print the bibliographic arguments to the info file and to the
+# screen.  This information in the info file is used to present 
+# the criteria in subsequent hit displays.
+    open (INFO_H, ">" . $HITLIST . ".info");
+    #print "Bibliographic criteria: ";
+    if ($gimme_arg || $gotmultidocid) {
+        $gimme_arg_to_show = &GimmeArgsToShow($gimme_arg);
+	                    # if we have a philodocid coming in then 
+			    # these are User Selected Documents.
+	if ($gotmultidocid) {                 
+	       $gimme_arg_to_show = "User Selected Documents";
+	       }
+
+	print "<b><tt>$gimme_arg_to_show </b></tt>";
+	print INFO_H "$gimme_arg_to_show\n";
+    }
+    else {
+	#print "<b>none</b>";
+	print INFO_H "none\n";
+    }
+#    print "<br>\n";
+
+# See if we are simply generating a bibliography. If there is a word
+# run gimme.  If not, run gimme and get all of the goodies in
+# biblio. Format and exit.  This REALLY should be a subroutine.
+# We are checking for a file /tmp/GIMME_ERROR for database connect
+# errors from SQL gimme.  The subroutine is in philo_subs.pl.  It
+# might make more sense simply to print the error notation to the
+# CORPUS file and check the contents, eh?  
+
+# Get vector of philodocid integers and put them in the CORPUS file
+    if ($word) {
+	if ($gimme_arg) {
+	    system ( "$SYSTEM_DIR/gimme " . $gimme_arg . " > " . $CORPUS );
+	    if ($SQLenabled) {
+	        &CheckSQLError();
+	    }
+	}
+    }
+
+# If there is no word to search in the texts for, get a list of 
+# bibliographic records either from SQL or standard gimme setting 
+# the appropriate arguments.  The verbose arguments (-v for sequential
+# gimme and verbose=on for sql gimme) print the entire bibliographic
+# entry to the CORPUS file.
+    else {
+        if ($SQLenabled) {
+		$sortorder =~ m/(.*)/;              # Untaint sortorder
+    		$sortorder = $1;
+                $gimme_arg .= " sortorder=\"". $sortorder . "\"";
+                $gimme_arg .= " verbose=\"on\"";
+		}
+	else {
+		$gimme_arg = "-v " . $gimme_arg;
+	}
+
+# Run the bibliographic search and get the results.
+	system ( "$SYSTEM_DIR/gimme " . $gimme_arg . " > " . $CORPUS );
+	if ($SQLenabled) {
+		&CheckSQLError();
+	}
+
+# If you find something, it should be a list of bibliographic
+# records which are formatted and printed.
+# First check to see if you are going to do a DIV search 
+# and do a relational join to print out a DIV and bibliographic
+# report.
+	if (-s $CORPUS && $divindex_arg) {
+		$divindexarg2display = &subdocargs2display($divindex_arg);
+		print "Searching for <b>$divindexarg2display</b> in
+		      selected documents.<br>";
+		&searchsubdoctable("verbose");
+        	print &kwicfooter;
+                exit 0;
+
+	        }
+        if (-s $CORPUS && $subdivindex_arg) {
+                $subdivindexarg2display = &subdocargs2display($subdivindex_arg);
+                print "Searching for <b>$subdivindexarg2display</b> in
+                      selected documents.<br>";
+                &searchsubdoctable("verbose");
+        	print &kwicfooter;
+                exit 0;
+                }
+
+# Otherwise you have a standard bibliography, so you will print
+# it out with various options.
+	elsif (-s $CORPUS) {
+	        open CORPUS, $CORPUS;
+        	while ($biblinin = <CORPUS>) {
+              		chop($biblinin);
+              		push (@bibbuffer, $biblinin);
+              		$bibctr++;
+              		}
+        	$length = $bibctr;
+	        if ($searchfrombibliography == 1) {   # Print search box in
+		      print &SearchInBibliography;    # bibliographic report
+	       		}
+	        else {
+		      print "Found <tt>" . $length . "</tt> document(s). ";
+	              }
+	       print "<hr>\n";
+	       if ($searchfrombibliography == 2) {    # Print a search form
+	       	   $biblinewithbox = 1;               # and check boxes to 
+	       	   print &mkSelectBibSearchForm;      # allow select biblio
+		   }
+	       foreach $singlebibline (@bibbuffer) {
+                     print &mkBiblio($singlebibline, "link" ) . "<p>\n"; 
+                     }
+	       if ($searchfrombibliography == 2) {    # Print the rest
+	           $biblinewithbox = 0;               # of the form and
+		   print "<hr>";                      # clear the variable
+		   print &SearchResultOptions(3);        # just in case.
+                   print "<p><input type=\"submit\" value=\"SEARCH\"> or 
+	                  <input type=\"reset\" value=\"CLEAR\">\n";
+		   print "\n</form>\n";
+		   }
+
+	}
+# Or you did not find bibliographic info, so say it and exit nicely.
+	else {
+	       print "<h2>No documents found matching specified bibliographic 
+	           criteria</h2><b>Note: </b>make sure that your bibliographic 
+	           entries include appropriate spacing, punctuation, and 
+	           accents. (E1)";
+        }
+	print &kwicfooter;
+	system ("rm -f $CORPUS");
+	exit 0;
+    }
+
+# This is the end of the bibliography only search function.  So let's count
+# the documents that we will query for full text query.  Remember that these
+# are stored as integers.
+    $length = int ((stat($CORPUS))[7] / 4);
+}
+
+else {                                # IF YOU HAVE SELECTED PARTS, PRINT
+				      # THESE TO THE CORPUS FILE.
+    if (!$word) {
+	print "Search on selected document parts requires a word to
+               find.";
+	print &kwicfooter;
+	system ("rm -f $CORPUS");
+	exit 0;
+	}
+
+    if ($PhiloDeBugDump) {
+	print "<p><tt>DEBUG: SELECTED PARTS: ";
+	}
+    $selected_parts++;
+    @SELECT = split ('&', $QS); 
+    $thisobjdepth = 3;
+
+# This is just to test the notion of populating object vectors
+# I'm reading in the list of objects and matching them against
+# the selection provided by the user.  This is not pretty.  
+# Waiting to see if search3 will us -1 as a match all the rest
+# signal.  
+    open (NAVIN, $SYSTEM_DIR . "/navigation/" . $DOCUMENT);
+    while ($xlinein = <NAVIN>) {
+	if ($xlinein =~ /-1/) {
+   	  $donothing = 1;
+	  }
+	else {
+	  ($navobject, $donothing) = split(" ", $xlinein, 2);
+	  $navobject .= ":";
+	  push (@listofnavobjs, $navobject);
+	}
+     }
+     close (NAVIN);
+# Got the objects for this doc.....
+			
+    push (@gottheseobjs, "ADUMMY");
+    open DIVCORPUS, ">" . $DIVCORPUS; 
+    for $_ (@SELECT) {
+	if ( /^SELECT/ ) {
+	    s/SELECT//;
+	    s/=//;
+	    s/\%3A/:/g;
+	    if ($PhiloDeBugDump) {
+		print "IN: $_ <br>";
+		}
+            $selectednav = $_ . ":";
+	    foreach $zz (@listofnavobjs) {       # Loop thru the list of
+	      if ($zz =~ /^$selectednav/) {      # objects and get those
+		$zz =~ s/:$//;                   # that front match the target
+	        @f = split (':', $zz);           # This all needs to be
+		$zz = "";                        # rethought with search3 lower
+		$zeroORminus1 = 0;               # div match......
+
+		for ($i = 0; $i <= $thisobjdepth; $i++) {
+			if (length($f[$i]) < 1) {
+			    $f[$i] = $zeroORminus1;
+			    $zeroORminus1 = -1;
+			    }
+			$zz .= $f[$i] . ":";
+		     }
+
+		$zz =~ s/:$//;
+
+		foreach $got1obj (@gottheseobjs) { 
+		   if ($got1obj eq $zz) {
+		      $zz = "" ;
+		      }
+                }
+
+	        if ($zz) {
+		   push(@gottheseobjs, $zz);
+	           @f = split (':', $zz);           
+		   for ($i = 0; $i <= $thisobjdepth; $i++) {
+		         if ($PhiloDeBugDump) {
+			      print "$f[$i] ";
+			      }
+		        print DIVCORPUS pack ('i', $f[$i]); 
+		        $selected++;
+		        }
+	           }
+
+
+	   }
+	}
+      }
+    }
+    if ($PhiloDeBugDump) {
+	print "</tt><p>\n";
+	} 
+    close (DIVCORPUS);
+
+
+    if ($selected) {
+	$DIVCORP2SEARCH = 1;
+	}
+    else {
+	$selectedwithnoparts = 1;
+	open (CORPUS, ">$CORPUS");
+	print CORPUS pack ('i', $DOCUMENT);
+        close CORPUS; 
+    }
+    
+    open BIBAUX, $SYSTEM_DIR . "bibliography"; 
+    $i = $f[0] + 1;
+    $i = $DOCUMENT + 1 unless $selected;               # Get the title and
+    while ( $i-- ) {                                   # print it to the info
+	$title = <BIBAUX>;                             # file and screen.
+    }
+    close BIBAUX; 
+    @f = split ('\t', $title); 
+    $title = $f[1] . ", " . $f[0];
+    $title =~ s/^, //;
+    open (INFO_H, ">" . $HITLIST . ".info");
+    print INFO_H $title . "\n";
+    print INFO_H 1 . "\n";
+    print INFO_H $showthem . "\n";
+    close INFO_H;
+}
+
+# The bibliographic search is done.  Print out the metadata information 
+# or error message if no valid bibliographic data is found for the search.
+if ( $gimme_arg ) {
+    if ($length) {
+	print "Searching <b>" . $length . "</b> documents ";
+	print "for <b>" . $showthem . "</b>.\n";
+    }
+    else {
+	print "<h2>No documents found matching specified bibliographic 
+               criteria</h2> <b>Note: </b>make sure that your 
+               bibliographic entries include appropriate spacing, 
+               punctuation, and accents.\n";
+	print &kwicfooter;
+	exit 0;
+    }
+}
+elsif ($selected_parts) {
+    print "Searching on ";
+    print "selected parts from " if $selected; 
+    if ($f[1]) {
+	print " $f[1], ";
+        }
+    print "<i>" . $f[0] . "</i>\n";
+    print "for <b>" . $showthem . "</b>.\n";
+}
+elsif ($gotmultidocid) {
+    $length = int ((stat($CORPUS))[7] / 4);
+    print "Searching $length documents for <b>". $showthem . "</b> .\n";
+    }
+else 
+{
+    print "Searching the <b>entire dictionary</b>\n";
+    print "for <b>" . $showthem . "</b>.\n";
+}
+
+print INFO_H $length . "\n";
+print INFO_H $showthem . "\n";
+close INFO_H;
+
+#=====================================================================
+# Run a search on the specified DIV or SUBDIV table.  This will 
+# run a search on the div or subdiv table.  If we have a CORPUS it
+# will join the two.  I'm doing this in order to keep the CORPUS
+# file for later bibliographic output if we do't find anything.
+#=====================================================================
+if ($divindex_arg && $word) {
+        $divindexrawfil = $SYSTEM_DIR . "divindex.raw";
+        if (-e $divindexrawfil) {
+		$divindexarg2display = &subdocargs2display($divindex_arg);
+	        print "<p>Searching selected objects: 
+                       <b>$divindexarg2display</b>.";
+		$DIVCORP2SEARCH = &searchsubdoctable;
+		}
+	else { 
+		print "Internal Error: divindex.raw not found.  Please
+                       contact $ERRORCONTACT<p>";
+		system (rm -f "$CORPUS");
+		print &kwicfooter;
+		exit (0);
+	}
+	if ($DIVCORP2SEARCH) {
+		$donothing = 0;
+		}
+	else {
+		print "<br>";
+		&bib_exit($CORPUS);
+		
+	}
+
+}
+
+# I should merge this with the above......
+if ($subdivindex_arg && $word) {
+        $subdivindexrawfil = $SYSTEM_DIR . "subdivindex.raw";
+        if (-e $subdivindexrawfil) {
+		$subdtoshow = &subdocargs2display($subdivindex_arg);
+	        print "<p>Searching selected objects: <b>$subdtoshow</b>.";
+                $SUBDIVCORP2SEARCH = &searchsubdoctable;
+                }
+        else {
+                print "Internal Error: subdivindex.raw not found.  Please
+                       contact $ERRORCONTACT<p>";
+		system (rm -f "$CORPUS"); 
+		print &kwicfooter;
+		exit (0);
+        }
+        if ($SUBDIVCORP2SEARCH) {
+		$donothing = 0;
+        }
+        else {
+                print "<br>No SUBDIVS Found, exiting...";
+		&bib_exit($CORPUS);
+
+        }
+
+}
+
+
+# -------------------------------------------------------------------------
+# ------- END Bibliographic and/or Object search handling -----------------
+# -------------------------------------------------------------------------
+
+# ==========================================================================
+# ==================== WORD/PATTERN EXPANDER (crapser) =====================
+# ==========================================================================
+# Now we will "expand" the pattern; for this we will run crapser.
+# TalktoExpand routine which we call will be talking to 
+# the program through a 2-way pipe.
+
+# Unless specified otherwise, we will search for both lower-
+# and upper-case occurences of the word[s].  When enabled on load
+# octal \256 is the initial index entry for upper case words.  This
+# was originally used for proper name indexing.  We can adjust
+# the loader to handle this distinction as required.  Few database
+# have proper names tagged.  It can be incredibly useful.  The
+# We use hash marks (#) as the search only upper case/proper name
+# operator.
+ 
+$word = "#?" . $word unless $word =~ /^#/;
+$word =~ s/(\+)([^#])/$1#?$2/g;
+$word =~ tr/#/\256/;
+
+push (@command, "crapser");
+@words = split ('\+', $word);
+$nw = $#words + 1;
+
+# to modify hitsize.......
+if ($numofNOTwords) {
+	$nw = $nw - $numofNOTwords;
+	}
+
+foreach $w (@words) {
+    @FromCrapser = &TalktoExpand ($w, @command);
+    @FromCrapser = sort @FromCrapser;
+
+    push (@WL, $FromCrapser[0]);
+    for ( $c = 1; $c <= $#FromCrapser; $c++ ) {
+	if ( $FromCrapser[$c] ne $FromCrapser[$c-1] ) {
+            push ( @WL, $FromCrapser[$c] );
+	    print "pushing $FromCrapser[$c] on \@WL\n" if $debug == 1;
+        }
+    }
+    undef @FromCrapser;
+    push (@WL, "\n");
+}
+pop (@WL);
+
+# If there're no words matching the pattern, we'll just exit.
+# Let's see what we've got:
+
+# Check to see if we have any matching words.  I should use the
+# length of the list function here.
+if ($PhiloDeBugDump) {
+	print "<p><tt>DEBUG: WORDEXPLODER: ";
+	foreach $w (@WL) {
+		print " $w ";
+		}
+	print "</tt><p>";
+	}
+
+$haveaword = 0;
+foreach $w (@WL) {
+  if ($w =~ /[A-Za-z0-9\177-\377]/) {
+	$haveaword = 1;
+	last;
+   }
+}
+
+# If we don't get a word back from crapser, then we print the error message,
+# run a similarity search on the word to generate a "Did you mean?" list
+# and exit.
+$testfirstword = $WL[0];
+if (!$haveaword && !$testfirstword) {
+    print "<h2>No words matching specified search term(s)</h2>";
+    print "<b>Note:</b> make sure that your search entries do not include\n";
+    &SimilarWordSearch;            # call similar word search...
+    &bib_exit($CORPUS);            # will still show them some bibliography.
+    exit (0);
+} 
+
+# Check to make sure that we are not exceeding the word list limit.
+# This may be a holdover, but it is probably good to have somekind of
+# limit just in case.  
+elsif ($#WL > $WListLimit - 1) {
+    print "<p>Word list exceeds the set limit of $WListLimit words.
+	   This limit is designed to prevent runaway searches.  It
+           can be raised by the database administrator.  Contact
+           $ERRORCONTACT to arrange for this. <p>
+	   Your pattern expanded to <tt>$#WL</tt> terms:\n<p>\n";
+
+    foreach $w (@words) {
+        $w =~ s/^\256\?*//;
+        print "<b><tt>" . $w . ":</tt></b>\n<p>\n";
+        $com = 0; 
+        while (($wout = shift (@WL)) && ($wout ne "\n")) {
+            $wout =~ s/^\256(.)/uc($1)/e;
+            print "|\n" if $com++;
+            print $wout;
+            }
+        print "\n<p>\n";
+    }
+    system("rm -f $CORPUS $DIVCORPUS");
+    print &kwicfooter;
+    exit (0); 
+}
+
+# -------------------- End of Word Expansion ------------------------
+
+# =================================================================
+# =============== RUN FREQUENCY REPORT SEARCHES ===================
+# =================================================================
+# Here is where we split off to run a search without using the
+# search deamon (nserver) and the search limiters in order to 
+# generate frequency collocation reports.  Since we are going to
+# be sorting all of the hits in various ways, we need to get them
+# all rather than wait for the first few to make it from search3
+# via nserver.  Recently cleaned-up and extended.  It is called
+# here because we have generated a CORPUS/DIVCORPUS and wordlist and 
+# are now ready to run a word search.
+# =================================================================
+if ($FREQREPORT) {
+    &runfreqsearch();
+    print &kwicfooter;
+    system ("rm -f $PHILOTMP/generated.$$ $PHILOTMP/mvogenerated.$$ $DIVCORPUS $CORPUS");
+    exit 0;
+}
+
+
+# ====================================================================
+# Now let's try to establish a connection to the search server.  
+# ====================================================================
+socket(SOCK, PF_INET, SOCK_STREAM, $proto) || die "socket: $!";
+bind (SOCK, sockaddr_in(0, $iaddr));
+# connect(SOCK, $paddr)    || die "connect: $!";
+
+# MVO added this check.  If we don't have a socket connection,
+# let's echo out the error and exit.  
+if (connect(SOCK, $paddr)) {
+	$donothing = 0;
+	}
+else { 
+	print "<p>PhiloLogic Nserver Error: $!";
+	print "<br>Contact $ERRORCONTACT.  PhiloLogic";
+	print " search deamon may have halted or not started properly.";
+	system (rm -f $CORPUS);
+	print &kwicfooter;
+	die "connect: $!";
+	exit;
+}	
+
+select (SOCK); $| = 1; select (STDOUT);
+my $pid;
+if ($pid = fork) {
+    print SOCK $SYSTEM_DIR . "\n";
+    print SOCK $HITLIST . "\n";
+    
+    if ($DIVCORP2SEARCH) {
+	print SOCK "-C:4 " . $DIVCORPUS . "\n";
+	$mvodebug .=  "-C:4 " . $DIVCORPUS . " ";
+	}
+    elsif ($SUBDIVCORP2SEARCH) {
+	print SOCK "-C:5 " . $DIVCORPUS . "\n";
+	$mvodebug .= "-C:5 " . $DIVCORPUS . " ";
+	}
+    elsif ( $gimme_arg || $gotmultidocid || $selectedwithnoparts) {
+	print SOCK "-C:1 " . $CORPUS . "\n";
+	$mvodebug .=  "-C:1 " . $CORPUS . " ";
+        }
+    
+    else {
+	print SOCK "\n";
+        }
+
+    $search_option = "-S:" . $s3opt . " ";
+    if ($textNOTquery) {
+	$search_option .= " -E:L=".$PHILOSEARCHLIMIT.":".$textNOTquery." ";
+	}
+    else {
+	$search_option .= " -E:L=".$PHILOSEARCHLIMIT." ";
+	}
+
+    print SOCK $search_option . "\n";
+    $mvodebug .=   $search_option . "\n";
+    # print "<p>$mvodebug <p>";
+
+    foreach $w (@WL) {
+	print SOCK $w;
+        }
+    print SOCK "END\n";
+}
+else {
+    while ($line = <SOCK>) {
+          if ($line eq "END\n") {
+	    close SOCK;
+	    exit;
+	}
+    }
+}
+close (SOCK)            || die "close: $!";
+
+if ($PhiloDeBugDump) {
+	print "<p><tt>DEBUG: SOCKET ARGS: $SYSTEM_DIR<br>";
+	print "$HITLIST<br>";
+	print "$mvodebug AND wordlist....";
+	print "</tt><p>";
+}
+#print "<p>\n";
+
+# Printed the search parameters to nserver.pl.  Let's see what we
+# get by checking the size of the HITLIST file.  
+
+$length = int((stat($HITLIST))[7] / (12 + $nw * 4));
+
+# Let's check every .05 seconds to see if we have more than 25 hits,
+# or if the search has finished (signaled by the hitlist.[pid]_ file)
+# or if we have a time out after a preset number of seconds.  
+$timeout = 0; 
+while ($length < 25 && !( -e $HITLIST . "._") && $timeout < $PHILOTIMEOUT ) {
+    $timeout++;
+    select (undef, undef, undef, .05);                  # sleep for .05 seconds
+    $length = int ((stat($HITLIST))[7] / (12 + $nw * 4));
+}
+
+if (!$length) {
+# Nothing found.  Let's see if this is a bug.  If we timedout, we say
+# say so.  Could be a flooded machine or some other problem. Check the
+# error file in hitlists for the string memory limit exceeded and print it 
+# accordingly. Otherwise, generate normal nothing found exit.  
+    if ($timeout >= $PHILOTIMEOUT) {
+	$timelimit = $PHILOTIMEOUT * .05;
+	print "<p><b>Possible Internal Error</b>: Search exceeded preset
+		timeout limit: $timelimit seconds.  Please retry.  If the
+                problem persists, please contact $ERRORCONTACT with 
+                details of this search.";
+	}
+	
+    $theerrorfile = $HITLIST . ".error";
+    if (-s $theerrorfile) {
+    	open (ERRFILE, $theerrorfile);
+	while ($inerror = <ERRFILE>) {
+		$theerrormessage .= $inerror;
+		}
+	close (ERRFILE);
+# Check the error string.  We might not get a return code.  
+	if ($theerrormessage =~ /memory limit exceeded/i) {
+		$errortype = 1;
+		$theerrormessage = "memory limit exceeded. exiting.";
+		}
+	if ($theerrormessage =~ /Segmentation fault/i) {
+		$errortype = 2;
+		$theerrormessage = "Segmentation fault.";
+		}
+	}
+    if ($errortype == 1) {
+	 print "<p><b>Internal Error: $theerrormessage</b>:\n";
+	 print "Try running your search with bibliographic limits or
+	        for fewer very common words.  This will be corrected 
+	        in a future update of PhiloLogic.  Please contact 
+	        $ERRORCONTACT with the details of this search.";
+         }		
+    elsif ($errortype == 2) {
+         print "<p><b>Internal Error: $theerrormessage</b>: \n";
+         print "Please contact $ERRORCONTACT with the details 
+                of this search.";
+         }             
+    else {	
+         print "<h2>Nothing found matching specified search term(s)</h2>
+               <b>Note:</b> make sure that your search entries do not 
+	       include textual punctuation.  Remember that accents 
+	       must be taken into account. (E3)<p>\n";
+
+	                                      # check for high frequency
+	 if ($search_option =~ /\-P[0-9]/) {  # words in proximity search
+		&checkpossibleERROR;          # and print warning.  This
+	        }                             # is a search2 bug problem.
+        }
+    &bib_exit ($CORPUS); 
+    exit (0);
+}
+
+# ========================================================================
+# You found something as indicated by some value of $length, the length in
+# bytes divided by the hitlegth of the hitlist file.  There are a number 
+# of possibilities.  The search might be finished or still running.  
+# ========================================================================
+
+# If the search has finished, let the user know how many hits you 
+# found and put a link to the other text report that we have.
+
+
+if ( -e $HITLIST . "._" ) {
+    #print $HITLIST;
+     	$length = int ((stat($HITLIST))[7] / (12 + $nw * 4));
+	print "Your search located <b>" . $length . "</b> occurrences.<p>\n";
+	$CHREP = $REPORT eq "conc" ? "kwic" : "conc";
+	$finish = $length > 100 ? 99 : $length - 1; 
+	if ($CHREP eq "conc") {
+        	$chrep_mvo = "Concordance";
+        	}
+	else {
+        	$chrep_mvo = "KWIC";
+        	}
+	print "<A HREF=\"$PHILOCGI/showrest_?$CHREP.$CONJUNCT.$nw.$$";
+        print ".0.$finish.$dbname\">";
+        print "Click here for a key-word-in-context display.</A><p>\n";
+
+}
+else {
+    $stillinprogress++;
+}
+
+$|=1;
+
+#$ENV{'PATH'} = $sys_dir . ":" . "/Volumes/data/cgi-bin/philodsal" . ":/bin:/usr/bin";
+
+
+# If you have more than 25 hits, tell the use this and print the
+# first twenty five and carry on, otherwise print the hits, clean-up
+# a bit, and exit.
+if ($length > 25 ) {
+    print "<p><b>This page contains the first 25 occurrences. Please
+             follow the link(s) at the bottom of the page to see the rest
+             of the occurrences your search found.</b><p>\n";
+
+    system ("/Volumes/data/cgi-bin/philodsal/artfl_$REPORT.pl $CONJUNCT $nw $HITLIST 0 24 $dbname");
+}
+else {
+
+    system ("/Volumes/data/cgi-bin/philodsal/artfl_$REPORT.pl $CONJUNCT $nw $HITLIST $dbname");
+    system ("rm -f $CORPUS $DIVCORPUS");
+    print &kwicfooter;
+    exit (0);
+}
+
+# We have printed the first 25 hits if there are more than 25.
+# While we've been printing out the first 25 hits, search3 has
+# been running along hopefully generating more hits.  So we need 
+# to check the length and to see if the search has finished yet.
+$length = int ((stat($HITLIST))[7] / (12 + $nw * 4));
+if ($stillinprogress) { 
+     if ( -e $HITLIST . "._" ) {
+	    print "<hr>Your search found <b>" . $length . "</b>                                    occurrences<p>\n"; 
+	    $stillinprogress = 0;
+    }
+    else { 
+	print "<hr>The search is still in progress. <b>"
+	     . $length . "</b> occurrences have been generated so
+	     far (Please follow the link(s) below to check on the
+	     progress).<p>\n"; 
+    } 
+}
+
+# Generate Hit Navigation ... 
+if ( $length >= 25 ) {
+   $howmany = int($length / 100 ); 
+   $start = 1; 
+   $Hnav = &HitNavigationLine($REPORT, $CONJUNCT, $nw, $$, $start, $length, 25);
+   if ($Hnav) {
+     print "<center>";
+     print "More search results";
+     print " (batches of $HITBLOCKSIZE)<br>";
+     print $Hnav;
+     print "</center>\n";
+     }
+}
+
+
+if (!$stillinprogress && $length > 24) {
+       print "<p>";
+       print "<A HREF=\"$PHILOCGI/showrest_?$REPORT.$CONJUNCT.$nw.$$.0";
+       print  ".".($length-1).".".$dbname."\">Retrieve all occurrences</A>";
+       print " (This may take some time to download)" if $length > 500;
+}
+
+else {
+    print "<A HREF=\"$PHILOCGI/showrest_?$REPORT.$CONJUNCT.$nw.$$.0.24.";
+    print "$dbname\">search progress</A>\n";
+}
+
+# Print the change report format link.  This should probably be a
+# subroutine.  Also see the same lines above.  
+print "<p>";
+$CHREP = $REPORT eq "conc" ? "kwic" : "conc";
+$finish = $length > 100 ? 99 : $length - 1; 
+if ($CHREP eq "conc") {
+      $chrep_mvo = "Concordance";
+      }
+else {
+      $chrep_mvo = "KWIC";
+     }
+print "<A HREF=\"$PHILOCGI/showrest_?$CHREP.$CONJUNCT.$nw.$$";
+print ".0.$finish.$dbname\">";
+print "Click here for a " . $chrep_mvo . " Report</A><p>\n";
+
+# The report of text results is done.  Clean up and exit here. 
+system ("rm -f $CORPUS $DIVCORPUS");
+print &kwicfooter; 
+exit 0;
+   
+
+#############################################################
+####    						 ####
+####			SUBROUTINES			 ####
+####    						 ####
+#############################################################
+
+# -----------------------------------------------------------------------
+# bib_exit: Called on search failure to print bibliographic items searched
+#           to a limit set in the database configuration file.
+# Called by search2t
+# -----------------------------------------------------------------------
+sub bib_exit {
+    local ($count);
+    $corpus = $_[0]; 
+    if ($BIB_EXIT_PRINT_LIMIT && open(CORPUS, $corpus)) {
+    	print "<hr><b>Documents Searched</b><p>\n";
+    	while (read (CORPUS, $doc, 4)) {
+		$doc = unpack ('i', $doc); 
+		print &getbiblioLine ( $doc, "link" ) . "<p>\n"; 
+		last if $selected_parts;
+		$count++;
+		if ($count > $BIB_EXIT_PRINT_LIMIT) {
+			print "<p>List truncated to first 
+			      $BIB_EXIT_PRINT_LIMIT entries.";
+			last;
+			}
+    	}
+    close CORPUS;
+    }
+    print &kwicfooter;
+    system ("rm -f $corpus $DIVCORPUS");
+    exit (0); 
+}
+
+# -----------------------------------------------------------------------
+# TalktoExpand: opens a pipe to crapser, prints the word list and 
+#               listens for a reply.  
+# Called by search2t
+#  -----------------------------------------------------------------------
+sub TalktoExpand {
+local ($word) = shift(@_);
+local ($command) = shift(@_);
+local (@args) = @_;
+local (@words, @WORD_LIST);
+
+pipe (CrapserReads, WeWrite);
+pipe (WeRead, CrapserWrites);	
+
+# (we will talk to crapser through these pipes)
+# Many good people got screwed up because they had forgotten
+# to unbuffer their output file descriptors:
+
+select (WeWrite); 	$|=1;
+select (CrapserWrites); $|=1;
+select (STDOUT); 	$|=1;
+
+
+if (fork) {
+       # We are the parent process
+       close (CrapserRead);
+       close (CrapserWrites);
+   }
+else {
+       # We are the child
+       close (WeWrite);
+       close (WeRead);
+
+       close (STDIN);
+       open  (STDIN, "<&CrapserReads");
+       close (CrapserReads);
+
+       close (STDOUT);
+       open  (STDOUT, ">&CrapserWrites");
+       close (CrapserWrites);
+
+       exec ($command, @args);
+   }
+
+@words = split ('\+', $word);
+
+# OK, let's talk to the program:
+
+foreach $w (@words) {
+       print WeWrite $w . "\n";
+   }
+
+close (WeWrite);
+
+# And now, let's hear what crapser has got to say:
+
+@WORD_LIST = <WeRead>;
+close (WeRead);
+
+return @WORD_LIST;
+}
+
+# ================================================================
+# RUNFREQSEARCH: This very long subroutine is called when we generate
+# a variety of reports that require all of the hits in a word search
+# to be accumulated for further processing.  These include frequency
+# reports, sorting on titles, authors, or user selected periods 
+# (sorted by raw frequencies or relative frequencies (rate/10000).
+# This is also used for collocation table generate and will be called
+# for a possible theme/rheme filter.   I suppose I could break each
+# of the specific reports into subroutines, but there are only 4
+# here, plus a call to the collocation generator.  
+# ================================================================
+sub runfreqsearch {
+# Print the expanded word list that you are searching for and the
+# number of terms.  Maybe this should be a database specific switch
+# or put into philo-subs.  For now, I'll leave it here.
+
+$words = join (" | ", @WL);
+$words =~ s/\256(.)/uc($1)/ge;
+if ($numofNOTwords) {
+	$words =~ s/\| \n \|/ [AND\/NOT] /g;
+	}
+else {
+	$words =~ s/\| \n \|/ [AND] /g;
+	}
+$wlcount = $#WL + 1;
+print "<br>Number of Unique Forms: $wlcount \n";
+print "<p><b>Search Terms: </b>" . $words . "<p>\n";
+
+# Run the search by talking directly to the search engine, passing 
+# along required arguments, opening a pipeline to the HITLIST file....
+
+$errorfile = $HITLIST . ".error";
+
+# Here we assume that the little shim shell which passes the
+# library directory will always live in $PHILOCGIPATH
+$MVOSEARCHARG = "| $PHILOCGIPATH/search3 ";
+
+$MVOSEARCHARG .= "-S:" . $s3opt . " ";
+if ($DUMPASCII) {
+        $MVOSEARCHARG .= "-E:d=3:L=$PHILOSEARCHLIMIT ";
+        if ($textNOTquery) {
+                $MVOSEARCHARG .= $textNOTquery . " ";
+        }
+	$MVOSEARCHARG .= "-P:ascii ";
+	}
+else {
+	$MVOSEARCHARG .= "-P:binary ";
+	if ($textNOTquery) {
+		$MVOSEARCHARG .= "-E:L=" . $PHILOSEARCHLIMIT . ":";
+		$MVOSEARCHARG .= $textNOTquery . " ";
+		}
+	else {
+        	$MVOSEARCHARG .= "-E:L=$PHILOSEARCHLIMIT ";
+	}
+}
+
+if ($DIVCORP2SEARCH) {
+	$MVOSEARCHARG .= "-C:4 " . $DIVCORPUS . " ";
+	}
+elsif ($SUBDIVCORP2SEARCH) {
+	$MVOSEARCHARG .= "-C:5 " . $DIVCORPUS . " ";
+	}
+elsif ( $gimme_arg || $gotmultidocid ) {
+        $MVOSEARCHARG .= "-C:1 " . $CORPUS . " ";
+	}
+else {
+	$donothing;
+	}
+
+	$MVOSEARCHARG .= " 2>" . $errorfile . " ";
+
+$MVOSEARCHARG .= "> " . $HITLIST;
+
+if ($PhiloDeBugDump) {
+	print "<p><tt>DEBUG: SEARCHARGS: $MVOSEARCHARG</tt><p>";
+	}
+
+open RUNSEARCH, "$MVOSEARCHARG";
+
+# and then each of the terms in the word list.  This list comes from above
+# when we ran the crapser/word exploder search.
+foreach $w (@WL) {
+    print RUNSEARCH $w;
+    }
+close RUNSEARCH;
+wait;
+
+if ($MVOSEARCHARG =~ /-P:ascii/) {
+	open(HHHLIST, $HITLIST);
+	$x = 0;
+	while ($inkine = <HHHLIST>) {
+		$x++;
+		print "<tt>$x:   $inkine </tt><br>\n";
+		}
+	close (HHHLIST);
+	print "<hr><hr>\n";
+	open (HHHLIST, $errorfile);
+	while ($inkine = <HHHLIST>) {
+		 print "<tt>$inkine </tt><br>\n";
+		 }
+	exit 0;
+	}
+
+# Check the length of the HITLIST file.  Note that this assumes our
+# fixed length index entries.  
+$length = int ((stat($HITLIST))[7] / (12 + $nw * 4));
+
+# If we don't find anything exit here normally.
+if (!$length ) {
+# Nothing found.  Let's see if this is a bug.  Check the
+# error file in hitlists for the string memory limit exceeded
+# and print it accordingly. Otherwise, generate normal exit.  
+# We can add others as required.
+# MVO Nov 8 2004.
+    $theerrorfile = $HITLIST . ".error";
+    if (-s $theerrorfile) {
+        open (ERRFILE, $theerrorfile);
+        while ($inerror = <ERRFILE>) {
+                $theerrormessage .= $inerror;
+                }
+        close (ERRFILE);
+        if ($theerrormessage =~ /memory limit exceeded/i) {
+                $errortype = 1;
+                $theerrormessage = "memory limit exceeded. exiting.";
+                }
+	if ($theerrormessage =~ /Segmentation fault/i) {
+                $errortype = 2;
+                $theerrormessage = "Segmentation fault.";
+                }
+        }
+    if ($errortype == 1) {
+         print "<p><b>Internal Error: $theerrormessage</b>\n";
+         print "Try running your search with bibliographic limits or
+                for fewer very common words.  This will be corrected      
+                in a future update of PhiloLogic.  Please contact
+                $ERRORCONTACT with the details of this search.";
+         }  
+         elsif ($errortype == 2) {
+         print "<p><b>Internal Error: $theerrormessage</b>: \n";
+         print "Please contact $ERRORCONTACT with the details 
+                of this search.";
+         }             
+    else {    
+         print "<h2>Nothing found matching specified search term(s)</h2>
+               <b>Note:</b> make sure that your search entries do not    
+               include textual punctuation.  Remember that accents
+               must be taken into account. (E3)<p>\n";
+         if ($search_option =~ /\-P[0-9]/) {
+                &checkpossibleERROR;
+                }
+           }
+      &bib_exit($CORPUS);
+    }
+
+# Otherwise proceed printing the total number of hits.  Maybe I should add
+# a buffer flush here, since it may take a while to resort and count
+# the hits.  
+system ("touch $HITLIST" . "._" );
+print "<b>Your search found <tt>$length</tt> occurrences.</b><hr>\n";
+
+# ------------------------------------------------------------------------
+# COLLOCATION REPORT GENERATOR call and exit.  This is here because
+# we don't need the hits grouped by title and counted which follows below.
+# The Collocation report generator reads the hitlist without reference
+# to bibliographic information.
+# ------------------------------------------------------------------------
+if ($PF) {
+    # If this is a long report, force a buffer flush and guess how long
+    # this will take.  The buffer flush assumes that httpd and/or perl
+    # are buffering output, which is typical.
+    if ($length > 1000) {
+       print "Generating Collocation Table.  This should take approximately ";
+       print int($length/400)+1 . " seconds.  <p>" ;
+       for ($mvobuffd=0; $mvobuffd < 600; $mvobuffd++) {
+           print "                           \n";
+           }
+    }
+    # Untaint and set defaults for arguments.
+    if ($POLESPAN =~ m/(\d+)/) {
+         $safepolespan = $1;
+    }
+    else {
+       $safepolespan = 5;
+    }
+    if ($POLEFILTER =~ m/OFF/) {
+        $safepolefilter = "OFF";
+    }
+    else {
+        $safepolefilter = "ON";
+    }
+    # Run the external function.  When it returns, print a footer and
+    # exit.  I'm assuming that I am cleaning up after myself.
+    system ("/Volumes/data/cgi-bin/philodsal/artfl_pole.pl 6 1 $HITLIST $safepolespan $safepolefilter $dbname");
+    print &kwicfooter;
+    system ("rm -f $CORPUS $DIVCORPUS");
+    exit (0);
+}
+# ------------------------ End Collocation report --------------------------
+
+# ------------------------------------------------------------------------
+# FREQUENCY BY HEAD: This is a report that generates a report of
+# hits sorted by the div in which they are found.  Primarily aimed
+# at reference works, dictionaries and encyclopedias.  I'm leaving
+# just a stub here ... the subroutine is down below.
+# ------------------------------------------------------------------------
+if ($FREQBYHEAD) {
+    &dofreqbydiv;
+    print &kwicfooter;
+    system ("rm -f $CORPUS $DIVCORPUS");
+    exit (0);
+}
+
+# --------------------------------------------------------------------------
+# Theme/Rheme report.  This summarizes the results by where in
+# a clause a hit word is found.  So again, you need all the hits.  
+# --------------------------------------------------------------------------
+if ($THMRHM) {
+        print "<center><b>Clause Position Analysis</b></center>"; 
+        if ($length > 1000) {
+            print "<br>The complete report will take about: "; 
+            print int($length/200)+1 . " seconds?  <p>" ;
+            for ($mvobuffd=0; $mvobuffd < 600; $mvobuffd++) {
+                        print "                           \n";
+                        }
+            }
+        system ("theme_rheme.pl 6 1 $HITLIST $dbname $themeprintlimit");
+        print &kwicfooter;
+	system ("rm -f $CORPUS $DIVCORPUS");
+        exit(0);
+}
+
+# --------------------------------------------------------------------------
+# Sorted Line by line (KWIC) report.  This sorts the hits by the
+# keyword (hitword) and words to the left or right of the hit.  
+# Again, I need all the hits to sort.  I may consider building a
+# block report for this, by storing the actual KWIC lines in a
+# file and getting them in batches.  Remember that I have to read
+# each hit.  At one time I thought about using the indicies, but
+# you still have to get them, so brute force and wait a few seconds.
+# --------------------------------------------------------------------------
+if ($SORTEDKWIC) {
+	if ($length > 20000) {
+		print "<center>Your search generated more than 
+		      20,000 occurrences.</center>\n";
+		print "<p>A Line by Line (KIWC) Report cannot be 
+		      sorted for results of more than 20,000 occurrences.
+		      Please refine your search.  Contact $ERRORCONTACT
+                      to have this limit increased.";
+		print &kwicfooter;
+	        exit(0);
+		}
+	if ($KWSS == 1) {
+		$whichside = "right";
+		}
+	else {
+		$whichside = "left";
+		}
+	print "<center><b>Line by Line (KIWC) Report</b><br>
+	       Sorted by keyword and words to its $whichside.</center><p>";
+
+        if ($length > 1000) {
+            print "The complete report will take about: ";
+            print int($length/200)+1 . " seconds.  <p>" ;
+            for ($mvobuffd=0; $mvobuffd < 600; $mvobuffd++) {
+                        print "                           \n";
+                        }
+            }
+	system ("/Volumes/data/cgi-bin/artfl_sortedkwic.pl 6 1 $HITLIST $dbname $KWSSPRLIM $KWSS");
+	print &kwicfooter;
+	system ("rm -f $CORPUS $DIVCORPUS");
+	exit(0);
+}
+
+# ======================================================================
+# We now have a set of raw hits in HITLIST.  Are now going to sort them
+# in various ways, so we need to load two important things.  First we will
+# load the entire bibliography into a list.  This is wasteful.  We should
+# really load only author, title, and date information.  I'll fix this.
+# We could also simply use SQL lookups, but we don't know if we have
+# SQL and on many things, that many searches could be expensive.  So..
+
+open (BIBLIO, $SYSTEM_DIR . "bibliography");
+@BIBLIOGRAPHY = <BIBLIO>;
+close BIBLIO;
+
+# Read in total words in each document, used for generating normalized
+# frequencies (per 10000 words).  This file should exist.  Maybe we 
+# should exit with an error message if it does not. I'm putting this in
+# a hash.  Bad again, should be a simple list.  
+if (-e "$SYSTEM_DIR/countbydocid") {
+    open (COUNTBYDOCID, "$SYSTEM_DIR/countbydocid");
+    while ($TEMPCOUNT = <COUNTBYDOCID>) {
+          $readdoccount = +1;
+          $TEMPCOUNT =~ s/\n//;
+          ($temp1, $temp2) = split(/\t/, $TEMPCOUNT);
+          $countbydoc{$temp1} = $temp2;
+   }
+   close (COUNTBYDOCID);
+}
+
+# If we don't have an readdocount values and we are going to  generate 
+# a sort by relatively frequency of title, author or period, then give 
+# an error message and exit.  This should never happen, but hey...
+if (!$readdoccount) {
+  if ($TFRATE || $AFRATE || $DFRATE) {
+     print "Error Reading Document Total Word Count File!";
+     print &kwicfooter;
+     system("rm -f $CORPUS $DIVCORPUS");
+     exit (0);
+     }
+  }
+
+# The basis for all of the reports, at least for now, is a list of
+# hits sorted by the titles in which they occur.  This list is
+# sorted by descending frequency, since the most frequent is most
+# interesting in most cases.  This writes out to SORTED a list of
+# document ids and the FIRST hit number in the HITLIST: 1228 9
+# When sorted an uniqed, you get a list of hits that shows the
+# frequency by title, the PhiloLogic document identifier, and
+# the number of the start hit in the HITLIST.  To get the range of
+# hits for a particular document, you start at the start hit and
+# read the frequency number of hits in the HITLIST.  Leonid is kewl
+# since this is a quick index to the HITLIST, so we can get hits
+# for any title.
+open (SORTED, "| uniq -c | sort -nr +0 -1 > $PHILOTMP/generated.$$");
+open (TFILE, $HITLIST);
+$hitsize = 12 + 4 * $nw;
+$offset = $hoffset = 0;
+while ($hit = &GetHit) {
+    @index = unpack ("s" . 6 . "i" . $nw, $hit);
+    #                      ^ this is VERY BAD!    I agree, just terrible.
+    #                        And it won't work for any new index scheme
+    if ($index[0] != $cached) {
+        $hoffset = $offset;
+        }
+    $cached = $index[0];
+    $offset++;
+    print SORTED $index[0] . " " . $hoffset . "\n";
+}
+close SORTED;
+
+# We have a list of hits sorted and counted by document identifier.   
+# Let's call this the GENERATED list.  Each line in GENERATED looks like
+# 33 1851 124 --> number of hits (33), in document (1851), starting at
+# the 124th entry in the HITLIST.  Remember that HITLISTS are always
+# stored in DOCUMENT order.  So, to get the 33 hits here, we push a
+# showrest: HITLIST-file-number.124.156.DATABASE-NAME 
+#
+# =====================================================================
+# GENERATE REPORTS: Here we have a set of specific reports to generate.
+# Title by Raw Frequency simply outputs a formatted report from the
+# generated list.  The rest will use one or more secondary sorts to
+# accumulate the title information by author/period (others), and to
+# resort the results by a relative frequency measure.
+# =====================================================================
+#
+
+########################################################################
+#  Sort Hits by User Selected Criteria with Frequency and Relative
+#  Frequency
+########################################################################
+
+if ($TRSORT) {
+    if ($trsortorder) {
+    	$sortorderx = $trsortorder;
+	}
+    else {
+	$sortorderx = $sortorder;
+	}
+
+    $sortorderx =~ s/\+/ /g;
+    $sortorderx =~ s/,//g;
+    print "<b>Search results sorted by $sortorderx</b><p>";
+    ($sfx1, $sfx2) = split(/ /,$sortorderx);
+    $sf1 = 0;
+    $sf2 = 0;
+    $y = 0;
+    foreach $x (@Biblio_Fields) {
+	if ($x eq $sfx1) {
+		$sf1 = $y;
+		}
+	if ($x eq $sfx2) {
+		$sf2 = $y;
+		}
+	$y++;
+    }
+
+    if ($searchfrombibliography == 2) {
+	print &mkSelectBibSearchForm;
+	}
+    open (GENERATED, "$PHILOTMP/generated.$$");
+    while (<GENERATED>) {
+        ($wordfreq, $freqdocid, $freqhitstart) = split;
+        $ratebase = $countbydoc{$freqdocid};
+	$relfreq = &getrelativefreq($wordfreq, $ratebase, $perwhat);
+        @bibfields = split ('\t', $BIBLIOGRAPHY[$freqdocid]);
+        $title = $bibfields[0];
+        $author = $bibfields[1];
+        $titleline = &mkfreqtitleline($title, $author, $wordfreq, 
+                     $freqdocid, $freqhitstart, $relfreq, "1");
+	if ($searchfrombibliography == 2) {
+		$checkbox = "<input type=\"checkbox\" name=\"multidocid\" ";
+                $checkbox .= "value=\"" . $freqdocid . "\"> ";
+		$titleline = $checkbox . " " . $titleline;
+		}
+        $sortkeyz = $bibfields[$sf1];
+	$sortkeyz .= " " . $bibfields[$sf2];
+	if (defined(&WordSearchSortKey)) {
+		$sortkeyz = &WordSearchSortKey($sortkeyz);
+        	}
+	else {
+		$sortkeyz =~ tr/A-Z/a-z/;
+		}
+	$hitkeytitline = $sortkeyz . "\t" . $titleline;
+	push (@listtosort, $hitkeytitline);
+        }
+     foreach $x (sort @listtosort) {
+	($sortkeyz, $titleline) = split(/\t/, $x);
+	print $titleline;
+	}
+    if ($searchfrombibliography == 2) {
+       print "<hr>";                    
+       print &SearchResultOptions(3);    
+       print "<p><input type=\"submit\" value=\"SEARCH\"> or   
+              <input type=\"reset\" value=\"CLEAR\">\n";
+       print "\n</form>\n";
+       }
+	
+}
+
+########################################################################
+#  Title By Frequency 
+########################################################################
+if ($TF) {
+    print "<b> Frequency by Title in descending numeric order with 
+              frequency in bold and [rate per 10,000] in brackets:
+	      </b><p>\n";
+    open (GENERATED, "$PHILOTMP/generated.$$");
+    $ftcounter = 1;
+    while (<GENERATED>) {
+        ($wordfreq, $freqdocid, $freqhitstart) = split;
+        print $ftcounter++ . ". <b>" . $wordfreq . "</b> ";
+	$ratebase = $countbydoc{$freqdocid};
+	$relfreq = &getrelativefreq($wordfreq, $ratebase, $perwhat);
+        if ($relfreq) {
+		print " [" . $relfreq . "] ";
+		}
+        @bibfields = split ('\t', $BIBLIOGRAPHY[$freqdocid]);
+        $title = $bibfields[0];
+        $author = $bibfields[1];
+	$titleline = &mkfreqtitleline($title, $author, $wordfreq, 
+                     $freqdocid, $freqhitstart);
+	print $titleline;
+        }
+    close GENERATED;
+    }
+
+####################################################################
+# Title Frequency by Rate per 10000 words in the document
+####################################################################
+if ($TFRATE) {
+    print "<b> Frequency by Title in descending order of rate per 
+           10,000 with [frequency] in brackets (e.g., 4.72 [4] means 
+	   4.72 occurrences in 10,000 words with a total of 4 occurrences 
+	   in that title.): </b><p>\n";
+# We've got a file of hits sorted frequency.  Now, we're going
+# to get the relative frequencies, sort them, and print them.
+    open(GENERATED, "$PHILOTMP/generated.$$");
+    open(MVOSORTED, "| sort -nr +0 -1 > $PHILOTMP/mvogenerated.$$");
+    while (<GENERATED>) {
+        ($wordfreq, $freqdocid, $freqhitstart) = split;    
+	$ratebase = $countbydoc{$freqdocid};
+	$relfreq = &getrelativefreq($wordfreq, $ratebase, $perwhat);
+        if (!$relfreq) {
+	    $relfreq = "0";
+		}
+	$mvobuffer = $relfreq . " " . $wordfreq . " " . $freqdocid . " ";
+        $mvobuffer .= $freqhitstart . "\n";
+        print MVOSORTED $mvobuffer; 
+     }
+     close(GENERATED);
+     close (MVOSORTED);
+# Read in the sorted file.  Print it using the &mkfreqtitleline
+# subroutine.  
+     open(MVOGENERATED, "$PHILOTMP/mvogenerated.$$");
+     $ftcounter =  1;
+     while (<MVOGENERATED>) {
+        ($relfreq, $wordfreq, $freqdocid, $freqhitstart) = split;
+        print $ftcounter++ . ". <b>" . $relfreq . "</b> ";
+	print "[" . $wordfreq . "] ";
+        @bibfields = split ('\t', $BIBLIOGRAPHY[$freqdocid]);
+        $title = $bibfields[0];
+        $author = $bibfields[1];
+        $titleline = &mkfreqtitleline($title, $author, $wordfreq, 
+                     $freqdocid, $freqhitstart);
+        print $titleline;
+	}
+     close(MVOGENERATED);
+    }
+######################################################################
+#  Author sorted by raw number of hits or relative frequency.  Since
+#  we have to run a sort by author, we will generate both frequencies
+#  by author and the rate at the same time, output them for sorting
+#  and report accordingly.
+######################################################################
+if ($AF || $AFRATE) {
+    print "<b>Frequency by Author ";
+    if ($AF) {
+       print "in descending numeric order with frequency in bold and 
+              [rate per 10,000] in brackets: ";
+       } 
+    else {
+       print "in descending order of rate per 10,000 with [frequency] 
+              in brackets (e.g., 4.72 [4] means 4.72 occurrences in 
+	      10,000 words with a total of 4 occurrences in that author's 
+	      works.): ";
+       }
+    print "</b><p>\n";
+
+# generate an author frequency hash table by reading thru the bibliography
+# and totalling the countbydoc entries.
+    $x = 0;
+    for $y (@BIBLIOGRAPHY) {
+    	@bibfields = split ('\t', $y);
+	$author = @bibfields[1];
+	$author =~ s/[\[\{\(\]\}\)\\\/]//g;
+	$author =~ s/  *$//;
+	$authtfreq{$author} = $authtfreq{$author} + $countbydoc{$x};
+	$x++;
+    }
+
+# Read in the GENERATED FILE, sum the author occurences in a hash table
+# and put the hits in an another hash table..  
+    open GENERATED, "$PHILOTMP/generated.$$";
+    while ( <GENERATED> ) {
+       split;
+       @bibfields = split ('\t', $BIBLIOGRAPHY[$_[1]]);
+       $author = $bibfields[1];
+       $author =~ s/[\[\{\(\]\}\)\\\/]//g;
+       $author =~ s/  *$//;
+       $mvofreq{$author} = $mvofreq{$author} + $_[0];
+       $mvohits{$author} .=  $_[0] . "|" . $_[1] . "|" . $_[2] . "\t";
+    }
+    close GENERATED;
+# Generate rate and sort the information either by raw frequencies
+# or by rate.  
+    open MVOSORTED, "| sort -nr +0 -1 > $PHILOTMP/mvogenerated.$$";
+    while (($key, $value) = each %mvofreq) {
+    	   $atotfreq = $authtfreq{$key};
+   	   $relfreq = &getrelativefreq($value, $atotfreq, $perwhat); 	   
+	   if ($AF) {
+               print MVOSORTED "$value\t$relfreq\t$key\t$mvohits{$key}\n";
+               }
+	   else {
+	       print MVOSORTED "$relfreq\t$value\t$key\t$mvohits{$key}\n";
+	      }
+       }
+    close (MVOSORTED);
+
+# Read the sorted file and print it all out.
+    open MVOGENERATED, "$PHILOTMP/mvogenerated.$$";
+    $afcounter = 1;
+    while (<MVOGENERATED>) {
+        s/\t\n//;
+        @authfreq = split ('\t', $_);
+	$author = $authfreq[2];
+        $author = &FreqFormat($author);
+        print $afcounter++ . ". " . $author . ":<b> ";
+        print $authfreq[0] . "</b>";
+        print " [" . $authfreq[1] . "] ";
+# We have the hits stored in fields delimited by |, so if the user has not
+# selected to display only the authors, we get each sequence of hits
+# and print the title info with links. 
+	if ($AFTITLEDISP eq "OFF") {
+	    print "<br>\n";
+	    }
+	else {
+            $mvolength = scalar(@authfreq) - 1;
+            for $i (3..$mvolength){
+               ($titfreq, $doc, $hitstart) = split('\|', $authfreq[$i]);
+               @bibfields = split ('\t', $BIBLIOGRAPHY[$doc]);
+               $title = $bibfields[0];
+	       $author = "";                      # Don't display the author.
+               print "<span class=authfreqindt>";
+	       print "<b>$titfreq</b> ";
+	       $titleline = &mkfreqtitleline($title, $author, $titfreq, 
+	                 $doc, $hitstart);
+               print $titleline;
+	       print "</span>";
+	    }
+        }
+        print " ";
+      }
+   }
+
+
+#########################################################################
+# Period Frequencies: This works roughly the same was as Author
+# Frequencies.  I could probably merge the two functions, but there
+# are enough differences to make that more complicated than need be.
+# So, for simplicity, much of this is a block copy and modification
+# of the Author Frequency function.  OK, call me a wuss....
+#########################################################################
+if ($DF || $DFRATE) {
+    if ($DFRATE) {
+       print "<p><b>";
+       print "Frequency by Years in descending order of rate per 
+              10,000 with [frequency] in brackets (e.g., 3.09 [8] 
+	      means 3.09 occurrences in 10,000 words with a total 
+	      of 8 occurrences for that period of years.): "
+       } 
+    else {
+       print "Frequency by Years in descending numeric order with 
+              frequency in bold and [rate per 10,000] in brackets: ";
+       }
+    print "</b><p>\n";
+
+# Generate an period frequency hash table by reading thru the bibliography
+# and totalling the countbydoc entries after checking the user selected
+# periodizations
+    $x = 0;
+    for $y (@BIBLIOGRAPHY) {
+        @bibfields = split ('\t', $y);
+        $year = @bibfields[2];
+	$period = &DFperiodbuild($year);
+        $periodtfreq{$period} = $periodtfreq{$period} + $countbydoc{$x};
+        $x++;
+    }
+ 
+# Read in the GENERATED FILE, sum the period occurences in a hash table
+# and put the hits in an another hash table..  
+    open(GENERATED, "$PHILOTMP/generated.$$");
+    while (<GENERATED>) {
+       split;
+       @bibfields = split ('\t', $BIBLIOGRAPHY[$_[1]]);
+       $year = $bibfields[2];
+       $period = &DFperiodbuild($year);
+       $mvofreq{$period} = $mvofreq{$period} + $_[0];
+       $mvohits{$period} .=  $_[0] . "|" . $_[1] . "|" . $_[2] . "\t";
+    }
+    close(GENERATED);
+
+# Generate rate and sort the information either by raw frequencies
+# or by rate.  
+    open(MVOSORTED, "| sort -nr +0 -1 > $PHILOTMP/mvogenerated.$$");
+    while (($key, $value) = each %mvofreq) {
+           $ptotfreq = $periodtfreq{$key};
+           $relfreq = &getrelativefreq($value, $ptotfreq, $perwhat);       
+           if ($DF) {
+               print MVOSORTED "$value\t$relfreq\t$key\t$mvohits{$key}\n";
+               }
+           else {
+               print MVOSORTED "$relfreq\t$value\t$key\t$mvohits{$key}\n";
+              }
+       }
+    close(MVOSORTED);
+
+    open (MVOGENERATED, "$PHILOTMP/mvogenerated.$$");
+    $pfcounter = 1;
+    while (<MVOGENERATED>) {
+        s/\t\n//;
+        @periodfreq = split ('\t', $_);
+        if ($periodfreq[2] eq "9999") {
+                $periodfreq[2] = "Undated";
+                }
+        print "<font size=\"+1\">";
+        print $pfcounter++ . ". " . $periodfreq[2] . ":<b> ";
+        print $periodfreq[0];
+	print " [" . $periodfreq[1] . "] ";
+	print "</b></font>";
+	if ($DFTITLEDISP eq "OFF") {
+		print "<br>";
+		}
+	else {
+        $mvolength = scalar(@periodfreq) - 1;
+            for $i (3..$mvolength){
+               ($titfreq, $doc, $hitstart) = split('\|', $periodfreq[$i]);
+               @bibfields = split ('\t', $BIBLIOGRAPHY[$doc]);
+               $title = $bibfields[0];
+               $author = $bibfields[1];
+               print "<span class=authfreqindt>";
+               print "<b>$titfreq</b> ";
+               $titleline = &mkfreqtitleline($title, $author, $titfreq, 
+                         $doc, $hitstart);
+               print $titleline;
+               print "</span>";
+               }
+        }
+        print " ";
+      }
+    }
+
+}
+
+#------------------------------------------------------------------------
+#----------------------- End of Frequency Generators --------------------
+#------------------------------------------------------------------------
+
+# =======================================================================
+# checkpossibleERROR: When a proximity (word1 with N words of word2) 
+#                     search fails, check to see if one of the words is
+#                     very common (in the cluster.filter.wrds) and
+#                     report a possible error.  Yes, this does need to
+#                     be fixed.
+# =======================================================================
+sub checkpossibleERROR () {
+   local ($hifreqwords, $gotahifreqword, $linein, $w, $gotahifreqword);
+   local ($thehifreqword);
+   $hifreqwords = $SYSTEM_DIR . "/lib/cluster.filter.wrds";
+   if (-e $hifreqwords) {  
+       $gotahifreqword = 0;
+       open (HIFRQWRDS, $hifreqwords);
+       while ($linein = <HIFRQWRDS>) {
+             $linein =~ s/\n//;
+             foreach $w (@WL) {
+                 $w =~ s/\n//g;
+                 if ($w eq $linein) {
+                    $gotahifreqword = 1;
+                    $thehifreqword = $w;
+                    }
+                 }
+             }
+       close(HIFRQWRDS);
+       if ($gotahifreqword) {
+           print "<b>Warning</b>: In some installations of 
+                  PhiloLogic, including very common words such as
+                  <b>$thehifreqword</b> in phrase proximity searches
+                  may result in search failures.  Try running
+                  this search again using less common words to
+                  be certain.  This error will be corrected in a 
+                  future update of PhiloLogic.<p>";
+                 }
+      }
+}
+
+# =======================================================================
+# searchsubdoctable: 
+# =======================================================================
+sub searchsubdoctable {
+	local ($length, $sopt, $objdep, $subdocarg, $thecommand);
+	local ($x, $rtn, $thiscorpus, $newdivcorpus, $bindocid);
+	local ($thisdiv, $y, $p, $z, $restadd, $verbose, $havecorpus);
+	local ($whatkind);
+	$verbose = $_[0];
+	if ($divindex_arg) {
+		$whatkind = 1;
+		if ($verbose) {
+			$sopt = " -v ";
+			}
+		$sopt .= " -div ";
+		$objdep = 4;
+		$subdocarg = $divindex_arg;
+		}		
+	elsif ($subdivindex_arg) {
+		$whatkind = 2;
+                if ($verbose) {
+                        $sopt = " -v ";
+                        }
+		$sopt .= " -subdiv ";
+		$objdep = 5;
+		$subdocarg = $subdivindex_arg;
+	}
+	else {
+		print "Internal Error: bad args in searchsubdoctable. 
+                       Contact $ERRORCONTACT";
+		return;
+	}
+
+	$subdocarg =~ m/(.*)/;
+	$subdocarg = $1;
+	$subdocarg = &cleansubdocargs($subdocarg);
+	
+	$thecommand = $SYSTEM_DIR . "/subdocgimme ";
+	$thecommand .= $sopt . " ";
+	$thecommand .= $subdocarg . " ";
+	$thecommand .= "> ";
+	$thecommand .= $DIVCORPUS ;
+
+	system ("$thecommand");
+	$DIVCORPUS2 = $DIVCORPUS . "sorted";
+	$sortcommand = "sort -u " . $DIVCORPUS . " > " . $DIVCORPUS2;
+	system ("$sortcommand");
+	$DIVCORPUSOLD = $DIVCORPUS;
+	$DIVCORPUS = $DIVCORPUS2;
+
+# Let's see if we have a corpus.  We run a verbose SUBDIV search if
+# we don't have a word to search for.  If we don't have a corpus, let's
+# just return and output the Divs and Biblio.  Otherwise, we have two
+# verbose files, CORPUS and DIVCORPUS, which we want to merge.  This
+# is done by joinprintverbose.
+
+	if (-s $CORPUS) {
+		$havecorpus = 1;
+		}	
+	if ($verbose && !$havecorpus) {
+		$rtn = 1;
+		return($rtn);
+		}
+	if ($verbose && $havecorpus) {
+		&joinprintverbose($whatkind);
+		$rtn = 1;
+		return($rtn);
+		}
+		
+	$x = $objdep * 4;
+	$length = int ((stat($DIVCORPUS))[7] / $x);
+	if ($length) {
+		print " <br>Found $length objects at depth $objdep
+                        in the whole database.";
+	}
+	else {
+		print " <br><b>No objects found</b>.";
+		return(0);
+	}
+
+# Here is a poor man's relational join of the binary numbers.  
+	if (-s $CORPUS) {
+	       # print "<br>Seaching selected documents for objects. ";
+                open (TTFILE, $CORPUS);
+                while (read(TTFILE, $bindocid, 4)) {
+                        $y = unpack("s", $bindocid);
+                        push (@thiscorpus, $y);
+                        }
+                close (TTFILE);
+
+		open (TTFILE, $DIVCORPUS); 
+		while (read(TTFILE, $thisdiv, 4)){
+		        read(TTFILE, $restadd, ($x - 4));
+			$y = unpack("s", $thisdiv);
+			foreach $x (@thiscorpus) {
+                        if ($x == $y) {
+			    $newdivcorpus .= $thisdiv . $restadd;
+                            }
+			}
+		}
+		close (TTFILE);
+		$length = length($newdivcorpus) / $x;
+		if ($length) {
+			print "<br>Found $length objects in selected
+                               documents to search.";
+			open (TTFILE, ">$DIVCORPUS");
+			print TTFILE $newdivcorpus;
+			close (TTFILE);
+			}
+		else {
+		        print "<br>No matching objects in selected documents.";
+			system("rm -f $DIVCORPUS $DIVCORPUSOLD");
+		}
+	}
+
+	if (-s $DIVCORPUS) {
+		$rtn = 1;
+	}
+
+return($rtn);
+}
+# ======================================================================== 
+# joinprintverbose: this is a poor man's relational join of the tab 
+# delimited "verbose" bibliographic data and the tab delimited verbose 
+# output of the DIV search output.  
+# ======================================================================== 
+sub joinprintverbose {
+	local ($outbuffer, $x, $y, $biblin, $linein, $docid, $thiscorp);
+	local ($whatkind);
+	$whatkind = $_[0];          # 1 = DIV  2 = SUBDIV
+	open (TTFILE, $CORPUS);
+	while ($linein = <TTFILE>) {
+		$linein =~ s/\t\n/\n/;        # PATCH for a bad trailing "\t"
+		$linein =~ m/\t([0-9]*)\n/;   # from gimmesql
+		$docid = $1;
+		$linein =~ s/\n//;
+		$thiscorp{$docid} = $linein;
+		}
+	close (TTFILE);
+	$x = 0;
+	$outbuffer = "";
+	open (VERBOSEFILE, $DIVCORPUS);
+	while ($linein = <VERBOSEFILE>) {
+                  @results=split(/\t/, $linein);
+	          @subresults = split(":", $results[0]);
+	          $docid = $subresults[0];
+	          $biblin = "";
+	          $biblin = $thiscorp{$docid};
+	          if ($biblin) {
+		      $x++;
+		      if ($whatkind == 1) {
+		      	  $outbuffer .= &DivDisplayLine($linein);
+			  }
+		      else {
+			 $outbuffer .= &SubDivDisplayLine($linein);
+		     }
+		  }
+	    }
+        close(VERBOSEFILE);
+	if ($x) {
+		print "Found $x objects in selected documents. <p>";
+		print $outbuffer;
+		}
+	else {
+		print "<p><b>No objects found in selected documents</b>. <p>";
+		}
+
+        system ("rm -f $DIVCORPUS $CORPUS $DIVCORPUSOLD");
+
+}
+
+# ========================================================================
+# mkNOTtextquery: generate the NOT text search option string:
+#                 -E:N=3:B=101 where N = number of query terms
+#                 and B = sequence of words, 0 being the NOT terms.
+# ========================================================================
+sub mkNOTtextquery {
+	local ($thisquery, $n, $b, $y, $rtn, $mlist);
+	$thisquery = $_[0];
+	$thisquery =~ s/\+NOT\+/\+!/g;
+	$thisquery =~ s/^(NOT\+)/!/;
+	@mlist = split(/\+/, $thisquery);
+	foreach $y (@mlist) {
+		$n++;
+		if ($y =~ /!/) {
+			$b .= "0";
+			$numofNOTwords++;
+			}
+		else {
+			$b .= "1";
+		}
+	}
+	$rtn .= "N=" . $n . ":"; 
+	$rtn .= "B=" . $b; 
+return $rtn;
+}
+
+# ========================================================================
+# dofreqbydiv: generate the frequency of hits by div object, displaying
+#              the associated head.  This is borrowed from the freq by
+#              title.  Note that it builts a hash of objects and names.
+#              This may slow down for large data sets.  Designed primarily
+#              for reference works.  
+# ========================================================================
+sub dofreqbydiv {
+   local ($thedivid);
+   open (SORTED, "| uniq -c | sort -nr +0 -1 > $PHILOTMP/generated.$$");
+   open (TFILE, $HITLIST);
+   $hitsize = 12 + 4 * $nw;
+   $offset = $hoffset = 0;
+   while ($hit = &GetHit) {
+   @index = unpack ("s" . 6 . "i" . $nw, $hit);
+   $thedivid = $index[0] . ":" . $index[1];
+   if (@index[2] > 0) {
+       $thedivid .= ":" . @index[2];
+       }
+   if (@index[3] > 0) {
+       $thedivid .= ":" . @index[3];
+       }
+   if ($thedivid ne $cached) {
+        $hoffset = $offset;
+        }
+   $cached = $thedivid;
+   $offset++;
+   print SORTED $thedivid  . " " . $hoffset . "\n";
+   }
+   close (SORTED);
+
+   if (!$gotdivobjindex) {
+       $dividxfile = $SYSTEM_DIR . "/divindex.raw";
+       open (DIVIDXFIL, $dividxfile);
+       while ($line = <DIVIDXFIL>) {
+             @resline = split("\t", $line);
+             $DIVIDXTONAME{$resline[0]} = $resline[1];
+             $gotdivobjindex++;
+             }
+       close (DIVIDXFIL);
+       }
+
+   open (GENERATED, "$PHILOTMP/generated.$$");
+   while (<GENERATED>) {
+        ($wordfreq, $freqdivid, $freqhitstart) = split;
+        $title = $DIVIDXTONAME{$freqdivid};
+        $title = &FreqFormat($title);
+        $hitspan = ($freqhitstart  + $wordfreq  - 1);
+	$rtn = &DivHeadFreqLinks();
+        print $rtn;
+        }
+   close (GENERATED);
+   system ("rm -f $PHILOTMP/generated.$$");
+return;
+}
+

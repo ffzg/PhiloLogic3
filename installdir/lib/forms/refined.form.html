@@ -1,0 +1,85 @@
+<b>&sect;Refined Search Results:</b>
+
+<input TYPE="radio" NAME="OUTPUT" VALUE="TF"> Frequency by Title
+&nbsp;&nbsp;<input TYPE="radio" NAME="OUTPUT" VALUE="TFRATE"> Frequency by Title per 10,000<br>
+
+&nbsp;<input name=OUTPUT type=radio value=AF> Frequency by Author
+<input type="radio" name="OUTPUT" value="AFRATE"> Frequency by Author per 10,000
+[Check <input TYPE="checkbox" NAME="AFTITLEDISP" VALUE="OFF"> to hide titles]
+<br>
+
+&nbsp;<input name=OUTPUT type=radio value=DF> Frequency by Years
+&nbsp;<input type="radio" name="OUTPUT" value="DFRATE"> Frequency by Years per 10,000<br> 
+
+&nbsp; &nbsp; &nbsp; 
+               Select Year Group  <select name="DFPERIOD">
+               <option value="0">Year</option>
+               <option selected value="1">Decade</option>
+               <option value="2">Quarter Cent.</option>
+               <option value="3">Half Cent.</option>
+
+               <option value="4">Century</option>
+               </select>
+&nbsp;[Check <input TYPE="checkbox" NAME="DFTITLEDISP" VALUE="OFF"> to hide titles]
+<br>
+
+&nbsp;<input type="radio" name="OUTPUT" value="freqbyhead"> Frequency by Div Object (Headword in Dictionaries)<br>
+
+
+&nbsp;<input TYPE="radio" NAME="OUTPUT" VALUE="PF">
+Collocation Table Spanning 
+
+<select name=POLESPAN> 
+<option>10
+<option>9
+<option>8
+<option>7
+
+<option>6
+<option selected>5
+<option>4
+<option>3
+<option>2
+<option>1</option></select> 
+words.
+Turn Filter Off: <input TYPE="checkbox" NAME="POLEFILTER" VALUE="OFF"> 
+Filtered Words
+<br> 
+&nbsp;<input type="radio" name="OUTPUT" value="THMRHM">
+Word in Clause Position (Theme-Rheme) 
+&nbsp; Display Options: 
+<select name="THMPRTLIMIT">
+               <option value="1">Front of Clause Only</option>
+
+               <option value="2">Front and Last Only </option>
+               <option value="3">Front, Last, Middle</option>
+               <option value="4">Full Report</option>
+               </select>
+<br>
+
+&nbsp;<input type="radio" name="OUTPUT" value="SORTEDKWIC">
+Line by Line (KWIC) Sorted by keyword 
+and word to its 
+<select name="KWSS">
+<option value="1" selected>Right</option>
+
+<option value="2">Left</option>
+</select> 
+Display up to
+<select name="KWSSPRLIM">
+<option value="500" selected>500</option>
+<option value="1000">1000</option>
+<option value="2000">2000</option>
+<option value="5000">5000</option>
+<option value="10000">10000</option>
+</select> 
+occurrences.
+
+<br>
+
+&nbsp;<input type="checkbox" name="SIMWORD" value="ON">
+  Word Similarity (Entering <i>mystery</i> finds mysterye, mystory, etc.; a word must be of 5 characters or more.)<br>
+
+<br>
+Return to: <input name=OUTPUT type=radio value=conc> Occurrences with Context&nbsp; or <input name=OUTPUT 
+type=radio value=kwic> Occurrences Line by Line

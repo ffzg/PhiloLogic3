@@ -1,0 +1,12 @@
+$Id: README,v 2.12 2004/11/16 00:44:05 o Exp $
+This file used to contain information that we ended up splitting into
+INSTALLING and LOADING.  
+
+Read the INSTALLING file for guidance on installing PhiloLogic,
+and configuration guides for Linux and Mac OS X.
+
+Read the LOADING file for guidance on loading a set of texts
+and presenting them for search on the web.
+
+PhiloLogic(TM) is a registered trademark of the University of Chicago.
+

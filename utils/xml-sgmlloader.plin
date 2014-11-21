@@ -1,0 +1,2326 @@
+# $Id: xml-sgmlloader.plin,v 2.1 2004/08/23 21:45:03 o Exp $
+# -----------------------------------------------------------------------
+# philologic 2.8 -- TEI XML/SGML Full-text database engine
+# Copyright (C) 2004 University of Chicago
+# 
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the Affero General Public License as published by
+# Affero, Inc.; either version 1 of the License, or (at your option)
+# any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# Affero General Public License for more details.
+# 
+# You should have received a copy of the Affero General Public License
+# along with this program; if not, write to Affero, Inc.,
+# 510 Third Street, Suite 225, San Francisco, CA 94107 USA.
+
+# TEI XML and SGML loader.  It appears work properly on selected XML 
+# and SGML files.  Reads a list of generated object numbers, file names 
+# and sizes  Outputs raw index and additional data files.  I need to
+# describe this.  Some assembly required.  See Notes to Self at the
+# end of this script for things to do/change.
+# Last Modified: MVO March 28 2005.
+#
+# ======================= Table of Subroutines ======================
+# taghandler:         Main Tag processing function.
+# getdivhead:         Looks for <head...> under divs.
+# wordhandler:        Main Word processing function.
+# docharents:         Replace non-letter character entities.
+# havelowerdiv:       Check to see if there is an immediate subdiv.
+# makesqlsubdivrecord: prints a tabdelimited subdiv (paragraph block)
+# makesqlrecord:      Dump tab delimited object table (not done).
+# extractopenclosedata: Gets div table data in opener and closer
+# fixopenclose:       Runs standard conversions for opener/closer info
+# readdivopenclose:   A very simple parser get get opener/closer info
+# charents2utf8:      Convert Character Entities to UTF8.
+# moreentsinword:     Convert more character entities for indexing.
+# areyoupropname:     Check for upper case.  Should tag proper names.
+# lowercaseify:       Convert index word to lower case
+# up2low:             Convert Unicode to lower case.
+# inwordtagdel:       Replace in words tags with spanning character "_"
+# tagempt:               -- a helper for inwordtagdel
+# TagWordDel:         Replace tags and word patterns with " "
+# JoinHyphenWords:    Replace hyphen pattens with spanning character "_"
+# makerefidtable:     Generate cross reference table for document
+# AbbrevExpand:       Replace <abbr tags with letters and spanning char "_"
+# addtowordcount      Build the associative array for the word count
+# dumpthisdoccount:   Dumps document word count hash to a file.
+# DeleteUnicodeWordBreakers  replaces UTF byte sequences with space.
+# textloadpresets:    If I can't find textload.cfg, use these.
+# getthisxpath:       Get current XPATH ... experimental
+# ====================================================================
+# ================= Get ARGS for loader configurations ===============
+# ====================================================================
+# See if I can get the textloader.cfg file in the main PhiloLogic
+# directory.  If not, I'll use the defaults installed in this 
+# script.  
+${prefix} = "" unless ${prefix};
+$file = "${prefix}/etc/philologic/philologic.cfg";  
+# read in config files
+unless ($return = do $file) {
+	print STDERR "Could not find: philologic.cfg\n";
+}
+
+$textloadcfg = $PHILOBUILDDIR . "/textload.cfg";
+if (-e $textloadcfg) {
+	print STDERR "Using configuration in $textloadcfg\n";
+	do $textloadcfg;
+	if (!$ReadTextLoadCfg) {
+		print STDERR "ERROR: May not have read all of $textloadcfg
+                              ... using presets.\n";
+		&textloadpresets();
+		}
+	}
+else {
+	print STDERR "Count not find $textloadcfg ... using presets.\n";
+	&textloadpresets();
+	}
+
+print STDERR "Characters in Words = ";
+print STDERR $CHARSINWORD;
+print STDERR "\n";
+print STDERR "Characters Excluded from Words (Char not indexed)= ";
+print STDERR $CHARSNOTTOINDEX ;
+print STDERR "\n";
+
+# This can be no more than 235 bytes.  I'm setting it smaller here
+# just to be safe.  This should also be set in textload.cfg and the
+# presets below.  Just bein' paranoid.
+if (!$LONGWORDLIMIT) {
+	$LONGWORDLIMIT = 128;
+	}
+
+# ================ End ARGS from loader configuration  ==============
+
+# ================= General Arguments and Preliminaries =============
+# These file names are required by other components of the Philo
+# loader or system.  Do not change them.
+$NEWPAGEMARKFILE = "newpagemarks.raw";
+$SQLDIVFILE = "divindex.raw";
+$SQLSUBDIVFILE = "subdivindex.raw";
+$COUNTBYDOC = "countbydocid";
+$REFIDTABLEFN = "ref2idtable";
+if ($genworddocfreq) {
+	$WORDDOCFREQDIR = "wordfreqdoc";
+	if (-d $WORDDOCFREQDIR) {
+		print STDERR "Found $WORDDOCFREQDIR \n";
+	}
+	else {
+		mkdir $WORDDOCFREQDIR;
+		print STDERR "Made Dir: $WORDDOCFREQDIR \n";
+	}
+}
+
+		
+
+$LENSHIM = 0; # Don't ask.
+
+# Read in a file from argv having the DOCID and then the
+# filename.  This is generated.  You can run a debugging routine
+# to output words, tags and the raw index
+
+$temp = $ARGV[0];
+if ($temp =~ /-debug/i) {
+	$debug = 1;
+	$textfile = $ARGV[1];
+	}
+else {
+	$textfile = $ARGV[0];
+	}
+
+# Open a couple of additional files.
+# Page marks always....
+open (PAGEMARKFILE, ">> $NEWPAGEMARKFILE");
+
+# We want total counts by document this is simply 
+# docid \t count of total words in the document.
+
+open (DOCWORDTOTAL, ">> $COUNTBYDOC");
+
+# Div index only when set.
+if ($printsqldivtable) {
+	open (DIVINDEXFILE, ">> $SQLDIVFILE");
+	}
+
+# SubDiv index only when set.
+if ($printsqlsubdivtable) {
+	open (SUBDIVINDEXFILE, ">> $SQLSUBDIVFILE");
+	}
+
+
+# Open the ref2idtable file handle  
+if ($BUILDREFIDTABLE) {
+        open (REFIDTABLE, ">> $REFIDTABLEFN");
+        }
+
+# ======================================================================
+# ==================== The Main Loop ===================================
+# ======================================================================
+
+# Read in the list of files.  I should check for this.
+
+chomp($textfile);
+open FILEINTXT, "$textfile";
+while ($pfline = <FILEINTXT>) {
+   @plainline = split (/ /, $pfline);
+   $docid = $plainline[0];
+   $filename = $plainline[1];
+   $filename =~ s/\n//;
+
+# Initializing for each document.
+   $thewholething = "";
+   $inthetext = 0;
+
+# Let the user know you are loading this offender
+   print STDERR "Loading $docid ===> $filename... \n";
+
+# Put the whole XML document as a string ... this works reasonably
+# quickly even for 20MB documents.  Again, I should check for the
+# file and possibly also check to see if it has a few vital things,
+# like a couple of valid tags, otherwise the loader fails.
+
+   $gotadiv = 0;
+   $gotafront = 0;
+   $gotopenclose = 0;
+   $gotaparagraph = 0;
+   open (THEXMLFILE, $filename); 
+   while (<THEXMLFILE>) {
+	if (/<div/i) {
+		$gotadiv += 1;
+		$gotaparagraph = 0;
+		}
+
+        if (/<p>/i || /<p /i) {
+                $gotaparagraph += 1;
+                }
+
+	if (!$gotopenclose) {                 # Check for opener/closer
+		if (/<opener/i) {             # Why parse for it later if you
+			$gotopenclose = 1;    # don't have any in the doc?
+			}
+		if (/<closer/i) {
+			$gotopenclose = 1;
+			}
+		}
+
+	if (/<front/i) {
+		$gotafront += 1;
+		}
+	if (/<\/front/) {
+	   	$gotadiv = 0;
+		}
+	$thewholething .= $_;
+	}
+   close (THEXMLFILE);
+
+# First pass, print page objects and byte offsets.  Print out an
+# initial page object if you don't have any.  I should probably
+# put this in the page tag handler, but I still need to check
+# for an initial page tag, so leave it for now.  
+
+   $gotpage = 0;
+   while ($thewholething =~ m/(<pb)/gi) {
+	$gotpage = 1;
+	$thepagetag = $1;
+	$startbyte = pos($thewholething) - length($thepagetag); 
+	print "page $docid $startbyte\n";
+	}
+   if (!$gotpage) {
+        print "page $docid 0\n";
+        }
+   $currentpagetag = "na";
+
+# Print the initial structure which covers the information at the
+# beginning of the file, which we are not indexing, until we get to
+# a <front, <body, or <div (and <HyperDiv).
+
+   print "p1 $docid 0 0\n";
+   print "t1 $docid 0 -1 0\n";
+   print "p2 $docid 0 -1 0\n";
+   print "t2 $docid 0 -1 -1 0\n";
+   print "p3 $docid 0 -1 -1 0\n";
+   print "t3 $docid 0 -1 -1 -1 0\n";
+
+   $DIV1 = 0;
+   $DIV2 = -1;
+   $DIV3 = -1;
+   $docpgobject = 0;
+   $contextdivlevel = 0;
+
+# In case we have notes or other objects that did not close
+# in the previous document, initialize these.
+   $NODEEPEROBJECTS = 0;
+   $INANOTE = 0;
+
+#  Replace  DOS <CR> characters with spaces since they can 
+#  give us all kinds of difficulties.
+   $thewholething =~ s/\015/ /g;
+
+# Now, we're going to split the tags out with newlines and put it all in 
+# a list.  This splits words on tags and will do so for words with 
+# inline tags, such as italics or superscripts.  So, before we do this,
+# let's check to see if we would run a couple of general fixes to
+# the the $wholething.
+
+# Join Hyphenated words.  It performs the required changes to 
+# $thewholething.
+
+if ($joinshywords) {
+	    &JoinHyphenWords;
+	}
+
+# Replace newlines with spaces.  Remember that we have seen lots of
+# tags with newlines, which can make a mess of things.
+
+   $thewholething =~ s/\n/ /g;
+
+# If set, run the Abbreviation Expander here, since these are tags
+# and words.  
+   if ($abbrevexpand) {
+       $thewholething =~ s/(<abbr[^>]*>\&[^;]*;<\/abbr>)/&AbbrevExpand($1)/gie;
+       }
+
+# Call the inword tag delete function if the switch is on.  This reads
+# the global $thewholething
+   if ($tagexception) {
+            &inwordtagdel();
+       }
+
+# Call the tag and word delete function if the switch is on.  This reads
+# the global $thewholething
+   if ($ignoretagswords) {
+            &TagWordDel();
+       }
+     
+# Add newlines to the beginning and end of all tags 
+   $thewholething =~ s/</\n</g;
+   $thewholething =~ s/>/>\n/g;
+# Split it into a list on newlines.
+   @INSTREAM = split(/\n/, $thewholething);  
+   $thewholething = ""; 
+
+#                  And finally, generate the index.
+# Read the list by lines ... distinguishing between tags and words
+# and keeping track of bytes read in, so you do to a taghandler
+# or a word handler.
+
+   $bytesreadin = 0;
+   $inlinecount = 0;
+   $totalwordsindoc = 0;
+   foreach $inline (@INSTREAM) {
+#
+#  Let's start indexing words and objects at either the <text
+#  of the <docbody tag.  We can add more.
+
+        if ($inline =~ /<text>/i || $inline =~ /<text /i) {
+              $inthetext = 1;
+              }
+        if ($inline =~ /<docbody/i) {
+              $inthetext = 1;
+              }
+# This is debugging code: print what's going in after preprocessing.
+	if ($debug) {
+		print "$inline\n";
+		}
+# End of debugging code
+
+        $inlinecount += 1;
+	if ($inline =~ /^</) {
+                $bytesreadin = $bytesreadin + length($inline);
+		if ($DUMPXPATHS) {
+			&getthisxpath($inline);
+			}
+		&taghandler($inline)
+		}
+	else {
+		&wordhandler($inline);
+                $bytesreadin = $bytesreadin + length($inline);
+	}
+     } 
+
+#    Print out the total word count per document here
+     print DOCWORDTOTAL "$docid\t$totalwordsindoc\n";  
+#    Print out word count for this document
+     if ($genworddocfreq) {
+	&dumpthisdoccount();
+     }
+}
+
+# ======================== END OF THE MAIN LOOP =========================
+
+# =======================================================================
+# ============================== SUBROUTINES ============================
+# =======================================================================
+
+# =======================================================================
+# Subroutine: taghandler
+# This is used to track the objects
+# and output structural and navigation raw index data such as:
+# p1 1 3 9309
+# t1 PHASE FIRST 1 3 -1 9309
+# parag 1 3 1 0 0 9420
+# sent 1 3 1 0 0 0 9420
+# parag and sent do not always have to be these, but can also
+# be linegroups and lines, etc.  These are objects below divs.
+# I should also check for explicit sentence tags <sent> but
+# we have never actually seen a database that has these.  We
+# HAVE build some ourselves.  Do we need more object levels?  Yes.
+# Philo 3....  Also, we will probably want an type in word.
+#
+# See the notes below regarding tags so far
+# =================================================================
+
+sub taghandler() { 
+local ($thetag);
+$thetag = $_[0];
+
+if ($inthetext) {
+
+# Are we in a text tag in a quote <q> so we can tell if were
+# should disregard <div tags inside.  This is a setable argument
+# on top.
+
+        if ($thetag =~ /<text/i && $intextquote) {
+                $inquotetexttag = 1;
+                }
+        if ($thetag =~ /<\/text/i ) {
+                $inquotetexttag = 0;
+                }
+# are we in a quote?
+        if ($thetag =~ /<q[ >]/i ) {
+                $intextquote = 1;
+                }
+        if ($thetag =~ /<\/q>/i ) {
+                $intextquote = 0;
+                }
+
+# PARAGRAPHS: needs to check for paragraphs with attributes
+#             should also check if in a linegroup and do nothing if so.
+
+	if ($thetag =~ /<p>/i || $thetag =~ /<p /i) {
+            $dothispara = 1;
+	    if ($INANOTE) {
+		$dothispara = 0;
+		}
+	    if ($NODEEPEROBJECTS) {
+		$dothispara = 0;
+		}
+	    if ($dothispara) {
+		  $paracount += 1;
+		  $PARA += 1;
+		  $SENT = 0;
+		  $WORD = -1;
+		  $parabyte = $bytesreadin - (length($thetag) + $LENSHIM);
+		  print "parag $docid $DIV1 $DIV2 $DIV3 $PARA $parabyte\n";
+		  print "sent $docid $DIV1 $DIV2 $DIV3 $PARA $SENT $parabyte\n";
+		}
+	    }
+
+# NOTES -- treat as para objects and set flag to not set paras in notes.
+# Currently treating them as distinct paragraphs.  Let's do this only
+# when the Note has a ID= statement, since these will be linked from
+# other statements, etc.  
+	if ($thetag =~ /<note /i) {
+	   if ($thetag =~ / id=/i) {
+             $paracount += 1;
+             $PARA += 1;
+             $SENT = 0;
+             $WORD = -1;
+             $parabyte = $bytesreadin - (length($thetag) + $LENSHIM);
+             print "parag $docid $DIV1 $DIV2 $DIV3 $PARA $parabyte\n";
+             print "sent $docid $DIV1 $DIV2 $DIV3 $PARA $SENT $parabyte\n";
+	     $INANOTE = 1;
+                if ($printsqlsubdivtable) {
+                        &makesqlsubdivrecord($thetag);
+                        }
+
+	   }
+        }
+
+	if ($thetag =~ /<\/note/i && $INANOTE > 0) {
+                $paracount += 1;
+                $PARA += 1;
+                $SENT = 0;
+                $WORD = -1;
+                $parabyte = $bytesreadin - (length($thetag) + $LENSHIM);
+                print "parag $docid $DIV1 $DIV2 $DIV3 $PARA $parabyte\n";
+                print "sent $docid $DIV1 $DIV2 $DIV3 $PARA $SENT $parabyte\n";
+		$INANOTE = 0;
+		}
+
+# EPIGRAPH: treat as para objects
+        if ($thetag =~ /<epigraph/i) {
+                $paracount += 1;
+                $PARA += 1;
+                $SENT = 0;
+                $WORD = -1;
+                $parabyte = $bytesreadin - (length($thetag) + $LENSHIM);
+                print "parag $docid $DIV1 $DIV2 $DIV3 $PARA $parabyte\n";
+                print "sent $docid $DIV1 $DIV2 $DIV3 $PARA $SENT $parabyte\n";
+                if ($printsqlsubdivtable) {
+                        &makesqlsubdivrecord($thetag);
+                        }
+		$NODEEPEROBJECTS = 1;
+                }
+	
+# END EPIGRAPH: these always often trailing objects ....
+        if ($thetag =~ /<\/epigraph/i) {
+                $paracount += 1;
+                $PARA += 1;
+                $SENT = 0;
+                $WORD = -1;
+                $parabyte = $bytesreadin - (length($thetag) + $LENSHIM);
+                print "parag $docid $DIV1 $DIV2 $DIV3 $PARA $parabyte\n";
+                print "sent $docid $DIV1 $DIV2 $DIV3 $PARA $SENT $parabyte\n";
+#               if ($printsqlsubdivtable) {
+#                        &makesqlsubdivrecord($thetag);
+#                        }
+                $NODEEPEROBJECTS = 0;
+                }
+
+
+# LIST: treat as para objects
+        if ($thetag =~ /<list/i  && $NODEEPEROBJECTS < 1) {
+                $paracount += 1;
+                $PARA += 1;
+                $SENT = 0;
+                $WORD = -1;
+                $parabyte = $bytesreadin - (length($thetag) + $LENSHIM);
+                print "parag $docid $DIV1 $DIV2 $DIV3 $PARA $parabyte\n";
+                print "sent $docid $DIV1 $DIV2 $DIV3 $PARA $SENT $parabyte\n";
+                if ($printsqlsubdivtable) {
+                        &makesqlsubdivrecord($thetag);
+                        }
+                }
+
+# ========================= SPEECH BREAKS ==============================
+# SPEECH BREAKS: treat them as para objects 
+        if ($thetag =~ /<sp /i || $thetag =~ /<sp>/i) {
+                $paracount += 1;
+                $PARA += 1;
+                $SENT = 0;
+                $WORD = -1;
+                $parabyte = $bytesreadin - (length($thetag) + $LENSHIM);
+                print "parag $docid $DIV1 $DIV2 $DIV3 $PARA $parabyte\n";
+                print "sent $docid $DIV1 $DIV2 $DIV3 $PARA $SENT $parabyte\n";
+                if ($printsqlsubdivtable) {
+                        &makesqlsubdivrecord($thetag);
+                        }
+		$NODEEPEROBJECTS = 1;
+                }
+
+# END: SPEECH BREAKS: treat them as para objects
+        if ($thetag =~ /<\/sp /i || $thetag =~ /<\/sp>/i) {
+		$NODEEPEROBJECTS = 0;
+		}
+
+# ========================= ARGUMENT BREAKS ==============================
+# ARGUMENT BREAKS: treat them as para objects
+        if ($thetag =~ /<argument /i || $thetag =~ /<argument>/i) {
+                $paracount += 1;
+                $PARA += 1;
+                $SENT = 0;
+                $WORD = -1;
+                $parabyte = $bytesreadin - (length($thetag) + $LENSHIM);
+                print "parag $docid $DIV1 $DIV2 $DIV3 $PARA $parabyte\n";
+                print "sent $docid $DIV1 $DIV2 $DIV3 $PARA $SENT $parabyte\n";
+                if ($printsqlsubdivtable) {
+                        &makesqlsubdivrecord($thetag);
+                        }
+                $NODEEPEROBJECTS = 1;
+                }
+
+# END: ARGUMENT BREAKS: treat them as para objects
+        if ($thetag =~ /<\/argument /i || $thetag =~ /<\/argument>/i) {
+                $NODEEPEROBJECTS = 0;
+                }
+
+# ========================= OPENER BREAKS ==============================
+# OPENER BREAKS: treat them as para objects
+        if ($thetag =~ /<opener /i || $thetag =~ /<opener>/i) {
+                $paracount += 1;
+                $PARA += 1;
+                $SENT = 0;
+                $WORD = -1;
+                $parabyte = $bytesreadin - (length($thetag) + $LENSHIM);
+                print "parag $docid $DIV1 $DIV2 $DIV3 $PARA $parabyte\n";
+                print "sent $docid $DIV1 $DIV2 $DIV3 $PARA $SENT $parabyte\n";
+                if ($printsqlsubdivtable) {
+                        &makesqlsubdivrecord($thetag);
+                        }
+                $NODEEPEROBJECTS = 1;
+                }
+
+# END: OPENER BREAKS: treat them as para objects
+        if ($thetag =~ /<\/opener /i || $thetag =~ /<\/opener>/i) {
+                $NODEEPEROBJECTS = 0;
+                }
+
+# ========================= CLOSER BREAKS ==============================
+# CLOSER BREAKS: treat them as para objects
+        if ($thetag =~ /<closer /i || $thetag =~ /<closer>/i) {
+                $paracount += 1;
+                $PARA += 1;
+                $SENT = 0;
+                $WORD = -1;
+                $parabyte = $bytesreadin - (length($thetag) + $LENSHIM);
+                print "parag $docid $DIV1 $DIV2 $DIV3 $PARA $parabyte\n";
+                print "sent $docid $DIV1 $DIV2 $DIV3 $PARA $SENT $parabyte\n";
+                if ($printsqlsubdivtable) {
+                        &makesqlsubdivrecord($thetag);
+                        }
+                $NODEEPEROBJECTS = 1;
+                }
+
+# END: CLOSER BREAKS: treat them as para objects
+        if ($thetag =~ /<\/closer /i || $thetag =~ /<\/closer>/i) {
+                $NODEEPEROBJECTS = 0;
+                }
+
+
+# =========================  STAGE DIRECTIONS ===========================
+# STAGE DIRECTIONS: treat them as para objects
+        if ($thetag =~ /<stage/i && $NODEEPEROBJECTS < 1) {
+                $paracount += 1;
+                $PARA += 1;
+                $SENT = 0;
+                $WORD = -1;
+                $parabyte = $bytesreadin - (length($thetag) + $LENSHIM);
+                print "parag $docid $DIV1 $DIV2 $DIV3 $PARA $parabyte\n";
+                print "sent $docid $DIV1 $DIV2 $DIV3 $PARA $SENT $parabyte\n";
+                if ($printsqlsubdivtable) {
+                        &makesqlsubdivrecord($thetag);
+                        }
+                }
+
+# =========================  CAST LIST ===================================
+# CAST LIST: treat them as para objects
+        if ($thetag =~ /<castlist/i) {
+                $paracount += 1;
+                $PARA += 1;
+                $SENT = 0;
+                $WORD = -1;
+                $parabyte = $bytesreadin - (length($thetag) + $LENSHIM);
+                print "parag $docid $DIV1 $DIV2 $DIV3 $PARA $parabyte\n";
+                print "sent $docid $DIV1 $DIV2 $DIV3 $PARA $SENT $parabyte\n";
+                if ($printsqlsubdivtable) {
+                        &makesqlsubdivrecord($thetag);
+                        }
+                }
+
+# PAGE BREAKS: this updates the currentpagetag or sets it to "na"
+#              if not found.  Note I assume n="[sometag]".  
+#              Also note that I am adding the pagetag to the output
+#              in order to split them out to replace the late function
+#              for doc in `cat plain.files | awk '{print $2"/"$3}'`; \
+#              do extpgmarks $doc; done > pagemarks.tmp
+#              echo '?????' | cat - pagemarks.tmp | sort -u > pagemarks
+
+
+	if ($thetag =~ /<pb/i) {
+		$temppagetag = $thetag;
+                $temppagetag =~ s/n="([^"]*)"/$1/i;
+		$currentpagetag = $1;
+		$currentpagetag =~ s/  */\_/g;
+		$currentpagetag =~ s/\-/\_/g;
+		$currentpagetag =~ tr/A-Z/a-z/;
+		if (!$currentpagetag) {
+			$currentpagetag = "na";
+			}
+		if ($debug) {
+			print "pgtag $currentpagetag\n";
+			}
+		print PAGEMARKFILE "$currentpagetag\n";
+		$docpgobject += 1;
+		}
+
+# LINE GROUP TAGS: treat linegroups same a paragraphs, set or unset the global
+#                  variable INLINEGROUP.
+
+	if ($thetag =~ /<lg/i  && $NODEEPEROBJECTS < 1) {
+                $paracount += 1;
+                $PARA += 1;
+                $SENT = 0;
+                $WORD = -1;
+		if ($lngrpbreaksent) {
+			$INLINEGROUP = 1;
+		}
+                $parabyte = $bytesreadin - (length($thetag) + $LENSHIM);
+                print "parag $docid $DIV1 $DIV2 $DIV3 $PARA $parabyte\n";
+                print "sent $docid $DIV1 $DIV2 $DIV3 $PARA $SENT $parabyte\n";
+		if ($printsqlsubdivtable) {
+			&makesqlsubdivrecord($thetag);
+			}
+                }
+
+        if ($thetag =~ /<\/lg/i) {
+		$INLINEGROUP = 0;
+		}
+
+# END LINE TAG: use this to break "sentences" if INLINEGROUP.  This is
+#               if to set searching in line groups to lines rather than
+#               sentences.  
+
+	if ($thetag =~ /<\/l>/i) {
+	  if ($INLINEGROUP && $lngrpbreaksent) {
+            if ($WORD > 2 ) {
+              $SENT += 1;
+              $WORD = -1;
+              $sentbyte = $bytesreadin - (length($thetag) + $LENSHIM);
+              print "sent $docid $DIV1 $DIV2 $DIV3 $PARA $SENT $sentbyte\n";
+              }
+	    }
+	  }
+			
+
+# SENTENCE TAG: <s> </s>.  We have never seen a sample of these
+# but let's add the required code to note the beginning of a new
+# sentence and to turn off automatic sentence tagging
+        if ($thetag =~ /<s>/i) {
+	    $SENT += 1;
+	    $WORD = -1;
+            $sentbyte = $bytesreadin - (length($thetag) + $LENSHIM);
+            print "sent $docid $DIV1 $DIV2 $DIV3 $PARA $SENT $sentbyte\n";
+	    $INTAGGEDSENT = 1;
+	    }
+        if ($thetag =~ /<\/s>/i) {
+	    $INTAGGEDSENT = 0;
+	    }
+
+# DOCBODY: this is for MEP.  We will change them here to a <div1 for
+#          the time being.  Note that I am replacing with the correct
+#          number of bytes to keep the offsets right -- kludge.
+	if ($thetag =~ /<docbody/i) {
+	   $thetag =~ s/<docbody/<div1   /i;
+	   }
+
+# FRONT: Treat <front as a <div and set <divs in front as being
+#        one div level deeper.  
+
+         if ($thetag =~ /<front[> ]/i) {
+	      $XX = "-1";     # Don't ask  :-)   Probably don't need it.
+              $DIV1 += 1;
+              $DIV2 = -1;
+              $DIV3 = -1;
+              $PARA = -1;
+              $SENT = -1;
+              $WORD = -1;
+              $DIVLOC = $DIV1 . ":" . $DIV2 . ":" . $DIV3;
+              $divbyte = $bytesreadin - (length($thetag) + $LENSHIM);
+              print "p1 $docid $DIV1 $divbyte\n";
+              print "t1 Front Matter $docid $DIV1 $XX $divbyte\n";
+              if ($printsqldivtable) {
+		   $DIVHEAD = "Front Matter";
+                   $currentdivphiloid = $docid . ":" . $DIV1;
+                   &makesqlrecord($currentdivphiloid, $thetag);
+                   }
+              $testlowerdiv =  &havelowerdiv();
+              if (!$testlowerdiv) {
+                  print "p2 $docid $DIV1 $XX $divbyte\n";
+                  print "t2 $docid $DIV1 $XX $XX $divbyte\n";
+                  print "p3 $docid $DIV1 $XX $XX $divbyte\n";
+                  print "t3 $docid $DIV1 $XX $XX $XX $divbyte\n";
+                  $DIV2 = 0;
+                  }
+	      $INFRONTMATTER = 1; 
+	      $contextdivlevel = 1;
+         }
+
+         if ($thetag =~ /<\/front/i) {
+	      $INFRONTMATTER = 0; 
+	      $contextdivlevel = 0;
+	 }
+
+# BODY TAG: Let's set it as a <div object if we have no divs in the
+#           document.  These tend to carry on as FRONTMATTER.  Don't 
+#           have to check for lower divs, etc.
+
+	if ($thetag =~ /<body/i && !$gotadiv) {
+              $XX = "-1";     # Don't ask  :-)   Probably don't need it.
+              $DIV1 += 1;
+              $DIV2 = -1;
+              $DIV3 = -1;
+              $PARA = -1;
+              $SENT = -1;
+              $WORD = -1;
+              $DIVLOC = $DIV1 . ":" . $DIV2 . ":" . $DIV3;
+              $divbyte = $bytesreadin - (length($thetag) + $LENSHIM);
+              print "p1 $docid $DIV1 $divbyte\n";
+              $DIVHEAD = &getdivhead;
+	      if ($DIVHEAD =~ /\[NA\]/i) {
+			$DIVHEAD = "Document Body";
+			}
+              print "t1 $DIVHEAD $docid $DIV1 $XX $divbyte\n";
+              if ($printsqldivtable) {
+                   $currentdivphiloid = $docid . ":" . $DIV1;
+                   &makesqlrecord($currentdivphiloid, $thetag);
+                   }
+               print "p2 $docid $DIV1 $XX $divbyte\n";
+               print "t2 $docid $DIV1 $XX $XX $divbyte\n";
+               print "p3 $docid $DIV1 $XX $XX $divbyte\n";
+               print "t3 $docid $DIV1 $XX $XX $XX $divbyte\n";
+               $DIV2 = 0;
+              $contextdivlevel = 1;
+         }
+
+# HyperDiv: This is a Brown WWP construct.  It is defined as:
+#       a place to put a number of different kinds of information 
+#       which are related to the body of the text but do not appear 
+#       directly within its flow, for instance footnotes, acrostics, 
+#       and castlist information which is not printed in the text but 
+#       is required to provide IDREFs for the who attribute on <speaker>.
+# We are going to treat these a <div1, but not output a DIVHEAD, so 
+# these should not appear in TOCs.  For now, call it "[HyperDiv]"
+
+         if ($thetag =~ /<hyperdiv/i) {
+              $XX = "-1";     # Don't ask  :-)   Probably don't need it.
+              $DIV1 += 1;
+              $DIV2 = -1;
+              $DIV3 = -1;
+              $PARA = -1;
+              $SENT = -1;
+              $WORD = -1;
+              $DIVLOC = $DIV1 . ":" . $DIV2 . ":" . $DIV3;
+              $divbyte = $bytesreadin - (length($thetag) + $LENSHIM);
+              print "p1 $docid $DIV1 $divbyte\n";
+	      $DIVHEAD = "[HyperDiv]";
+              print "t1 $DIVHEAD $docid $DIV1 $XX $divbyte\n";
+	      $DIVHEAD = "[HyperDiv]";
+              if ($printsqldivtable) {
+                   $currentdivphiloid = $docid . ":" . $DIV1;
+                   &makesqlrecord($currentdivphiloid, $thetag);
+                   }
+               print "p2 $docid $DIV1 $XX $divbyte\n";
+               print "t2 $docid $DIV1 $XX $XX $divbyte\n";
+               print "p3 $docid $DIV1 $XX $XX $divbyte\n";
+               print "t3 $docid $DIV1 $XX $XX $XX $divbyte\n";
+               $DIV2 = 0;
+              $contextdivlevel = 1;
+         }
+
+
+# DIV TAGS: set division levels and print out div info.  A couple of
+#           assumptions:  I assume divs are numbered 1,2,3.  
+#           I output <head> info where I find it.  This could also
+#           be modified to output a structured table record with
+#           div type, and other attributes, along with the Philoid
+#           and head for searching under document levels.
+
+	if ($thetag =~ /<\/div/i) {
+		$contextdivlevel = $contextdivlevel - 1;
+		$NODEEPEROBJECTS = 0;
+		}
+		
+        if ($thetag =~ /<div/i) {
+
+		$contextdivlevel += 1;
+		if ($contextdivlevel > 3) {
+			$contextdivlevel = 3;
+			}
+
+		if ($contextdivlevel < 1) {
+			$contextdivlevel = 1;
+			}
+
+		$XX = "-1";     # Don't ask  :-)  Probably don't need it.
+                $newdiv = $thetag;
+                $newdiv =~ m/<div(.)/i;
+		$newdivlevel = $1;
+		if ($debug) {
+			print "DIVLEVEL = $newdivlevel \n";
+			}
+
+# If it is an unnumbered DIV, let's get the level from the
+# context.  Maybe I should just do this for everything.  
+	 	if ($newdivlevel eq ">") {
+			$newdivlevel = $contextdivlevel;
+			}
+	 	if ($newdivlevel eq " ") {
+			$newdivlevel = $contextdivlevel;
+			}
+	 	if ($newdivlevel eq "0") {
+			$newdivlevel = $contextdivlevel;
+			}
+
+# Ignore div0 if instructed.
+		if ($ignoredivzero && $newdivlevel eq "0") {
+			$newdivlevel = 99;
+			}
+
+# <FRONT will be the top level div, so let's use context divlevel
+		if ($INFRONTMATTER) {
+			$newdivlevel = $contextdivlevel;
+			}
+
+# This is to ignore divs inside of internal text tags.  Setable
+# from configuration.  But we will bump the para and sent args
+
+		if ($ignoredivsinsubtext && $inquotetexttag) {
+		   $newdivlevel = 99;
+                   $paracount += 1;
+                   $PARA += 1;
+                   $SENT = 0;
+                   $WORD = -1;
+                   $parabyte = $bytesreadin - (length($thetag) + $LENSHIM);
+                   print "parag $docid $DIV1 $DIV2 $DIV3 $PARA $parabyte\n";
+                  print "sent $docid $DIV1 $DIV2 $DIV3 $PARA $SENT $parabyte\n";
+		}
+
+
+		if ($debug) {
+			print "DIVLEVEL1 = $newdivlevel \n";
+			}
+
+# And then process the divs at the appropriate level.  We're trying
+# to keep the numbered divs if possible.
+
+		if ($newdivlevel eq "1") {
+		  $DIV1 += 1;
+		  $DIV2 = -1;
+		  $DIV3 = -1;
+		  $PARA = -1;
+		  $SENT = -1;
+		  $WORD = -1;
+		  $DIVLOC = $DIV1 . ":" . $DIV2 . ":" . $DIV3;
+		  $divbyte = $bytesreadin - (length($thetag) + $LENSHIM);
+   		  print "p1 $docid $DIV1 $divbyte\n";
+		  $DIVHEAD = &getdivhead;
+   		  print "t1 $DIVHEAD $docid $DIV1 $XX $divbyte\n";
+		  if ($printsqldivtable) {
+			$currentdivphiloid = $docid . ":" . $DIV1;
+		        &makesqlrecord($currentdivphiloid, $thetag);
+			}
+		  $testlowerdiv =  &havelowerdiv();
+		  if (!$testlowerdiv) {
+                      print "p2 $docid $DIV1 $XX $divbyte\n";
+                      print "t2 $docid $DIV1 $XX $XX $divbyte\n";
+                      print "p3 $docid $DIV1 $XX $XX $divbyte\n";
+                      print "t3 $docid $DIV1 $XX $XX $XX $divbyte\n";
+		      $DIV2 = 0;   # MARCHHACK was 0
+		  }
+                }
+
+                if ($newdivlevel eq "2") {
+                  $DIV2 += 1;
+                  $DIV3 = -1;
+                  $PARA = -1;
+                  $SENT = -1;
+                  $WORD = -1;
+                  $DIVLOC = $DIV1 . ":" . $DIV2 . ":" . $DIV3;
+                  $divbyte = $bytesreadin - (length($thetag) + $LENSHIM);
+                  print "p2 $docid $DIV1 $DIV2 $divbyte\n";
+		  $DIVHEAD = &getdivhead;
+                  print "t2 $DIVHEAD $docid $DIV1 $DIV2 $XX $divbyte\n";
+                  if ($printsqldivtable) {
+                        $currentdivphiloid = $docid . ":" . $DIV1 . ":" . $DIV2;
+                        &makesqlrecord($currentdivphiloid, $thetag);
+                        }
+                  $testlowerdiv =  &havelowerdiv();
+                  if (!$testlowerdiv) {
+                      print "p3 $docid $DIV1 $DIV2 $XX $divbyte\n";
+                      print "t3 $docid $DIV1 $DIV2 $XX $XX $divbyte\n";
+		      $DIV3 = 0;  # MARCHHACK was 0
+		  }
+
+                }
+                if ($newdivlevel eq "3") {
+                  $DIV3 += 1;
+                  $PARA = -1;
+                  $SENT = -1;
+		  $WORD = -1;
+                  $DIVLOC = $DIV1 . ":" . $DIV2 . ":" . $DIV3;
+                  $divbyte = $bytesreadin - (length($thetag) + $LENSHIM);
+                  print "p3 $docid $DIV1 $DIV2 $DIV3 $divbyte\n";
+		  $DIVHEAD = &getdivhead;
+                  print "t3 $DIVHEAD $docid $DIV1 $DIV2 $DIV3 $XX $divbyte\n";
+		  if ($printsqldivtable) {
+                        $currentdivphiloid = $docid . ":" . $DIV1 . ":" . $DIV2;
+			$currentdivphiloid .= ":" . $DIV3;
+                        &makesqlrecord($currentdivphiloid, $thetag);
+                        }
+
+
+                }
+
+# This is for EEBO documents with NO subdiv objects ... so I add a
+# para and sent object for the first time I see a <div.  It is a hack
+                if (!$gotaparagraph) {
+                 $gotaparagraph = 1;
+                 $paracount += 1;
+                 $PARA += 1;
+                 $SENT = 0;
+                 $WORD = -1;
+                 $parabyte = $bytesreadin - (length($thetag) + $LENSHIM);
+                 print "parag $docid $DIV1 $DIV2 $DIV3 $PARA $parabyte\n";
+                 print "sent $docid $DIV1 $DIV2 $DIV3 $PARA $SENT $parabyte\n";
+
+                 }
+	    }
+
+# Any object that has an id will get registered in the reference table.
+# See below.
+	   if ($BUILDREFIDTABLE) {
+		if ($thetag =~ / id=/i) {
+		&makerefidtable($thetag);
+		}
+	   }
+
+      }
+
+}
+
+# =================================================================
+# Subroutine: getdivhead looks for a <head> within 5 lines of
+# a div ... and returns it to be output as a t[1-3] for our
+# table of contents/document navigation.  This is one of the BAD things
+# about not using a REAL SGML/XML parser.  Note that we could
+# also output this, with structural data, to be loaded in an
+# SQL table 
+#
+# This does not work for cases where you have the header info
+# in the <div tag, such as id="Some Title" (c.f. Cyrus).  All
+# perfectly legal, of course.
+#
+# You can also have multiple <head>s.  I should probably look for
+# these as well.
+# =================================================================
+
+sub getdivhead() {
+local ($temphead, $DIVHEAD, $lookahead, $nextline, $readmore, $x, $i);
+local ($getheadcount);
+$getheadcount = $GetMultipleDivHeads;
+$lookahead = $inlinecount;
+$readmore = 0;
+$i = 0;
+$x = 0;
+while (!$readmore && $i < $HEADLOOKLINES) {
+	$lookahead += 1;
+	$nextline = $INSTREAM[$lookahead];
+	$i++;
+	$nextline =~ s/<head\/>//i;
+        if ($nextline =~ /<div/i || $nextline =~ /<\/div/i ) {  
+                $i = $HEADLOOKLINES + 1;     # Don't go past an open or
+                $readmore = 0;               # close <div.
+                }
+	if ($nextline =~ /<head/i) {
+    		$readmore = 1;
+		}
+        if ($readmore) {
+             while ($readmore) {
+                 $lookahead += 1;
+                 $x++;
+                 $nextline = $INSTREAM[$lookahead];
+                 if ($nextline =~ /<\/head>/i) {
+                      $readmore = 0;
+                      if ($getheadcount) {
+                           $i = 2;
+                           $getheadcount = $getheadcount - 1;
+		           }
+                      else {
+			   $i = $HEADLOOKLINES + 1;
+                           }
+                      } 
+                 elsif ($x > 10) {    # Overflow trap in case you miss </head
+                      $readmore = 0;
+                      $i = $HEADLOOKLINES + 1;
+                      } 
+                 else {
+                      $DIVHEAD .= $nextline . " ";
+                      }
+                 }
+            }
+      }
+
+
+if ($DIVHEAD) {
+	$DIVHEAD = &docharents($DIVHEAD);
+	$DIVHEAD = &charents2utf8($DIVHEAD);
+	$DIVHEAD = &moreentsinword($DIVHEAD);
+	$DIVHEAD =~ s/\n<[^>]*>\n//g;
+	$DIVHEAD =~ s/\n//g;
+	$DIVHEAD =~ s/_//g;
+	$DIVHEAD =~ s/\t/ /g;
+	$DIVHEAD =~ s/  */ /g;
+	$DIVHEAD =~ s/^  *//;
+	$DIVHEAD =~ s/  *$//;
+	}
+elsif ($thetag =~ /type=/i) {
+   	$temphead = $thetag;
+   	$temphead =~ s/type="([^"]*)"//i;
+   	$temphead1 = $1;
+	$temphead1 = &charents2utf8($temphead1);
+  	$DIVHEAD = "[" . $temphead1 . "]";
+	}
+else {
+	$DIVHEAD = "[NA]";
+	}
+
+if ($DIVHEAD eq "[>]" || $DIVHEAD eq "[<]") {
+	        $DIVHEAD = "[NA]";
+        }
+return $DIVHEAD;
+}
+
+
+# =================================================================
+# Subroutine: wordhandler.  This needs to be split up.  It
+# takes an artbitrary string or words between two tags and
+# splits them into words and prints the raw index entry for
+# each one such as:
+#
+# word superficial 1 2 0 0 5 0 7 8616 2
+# word comprehension 1 2 0 0 5 0 8 8628 2
+#
+# It also identifies sentence breaks.  I am not checking for
+# existing sentence tags, but could and conditionalize it.
+# Also note that it does not check for sentences inside of
+# linegroups ... which are typically broken on lines.
+#
+# I am not currently handling ";" at the end of words because
+# of confusion with character ents.  Easily fixed.
+# =================================================================
+
+sub wordhandler() {
+
+local ($bunchofwords, $wordlist, $currentpos, $incount, $thenextword);
+local ($nextincount, $isyousent);
+$bunchofwords = $_[0];
+
+# We don't like many character entities, so let's change them
+# into spaces to get a clean break.
+if ($bunchofwords =~ /\&[a-zA-Z0-9\#][a-zA-Z0-9]*;/) {
+	$bunchofwords = &docharents($bunchofwords);
+	}
+# Now, we also know that there are Unicode characters which 
+# we normally want to break words.  Often, these are Microsoft characters
+# like the curly quotes. These are set in textload.cfg
+# in @UnicodeWordBreakers. 
+if ($HaveUnicodeWordBreakers) {
+        $bunchofwords = &DeleteUnicodeWordBreakers($bunchofwords);
+	}
+# Now, here's something you did not think of: Brown WWP: M&sup-r;
+# You are going to split words, on hyphens just below.  That would 
+# be a mess.  So a little exception handler which we will convert
+# to the supp(.) for indexing.
+	if ($bunchofwords =~ /&sup-/i) {
+		$bunchofwords =~ s/\&sup-([a-z0-9]);/&supp$1;/gi;
+		}
+
+# we're splitting the line of words into distinct words
+# separated by "\n"
+$bunchofwords =~ s/($CHARSINWORD)/\n$1\n/g;
+
+if ($breakapost) {
+	$bunchofwords =~ s/\'/\'\n/g;
+	}
+$bunchofwords =~ s/\n\n*/\n/g;
+@wordlist = split(/\n/, $bunchofwords);
+$currentpos = $bytesreadin;
+$incount = 0;
+if ($inthetext) {
+   foreach $theword (@wordlist) {	
+   $lword = length($theword);
+   $incount += 1;
+#
+# Keep track of your bytes since this is where you are getting
+# the byte offsets for words.
+#
+   $currentpos += length($theword);
+#
+#  Do we have a word?  At least one of these characters.
+#
+   if ($theword =~ /[A-Za-z0-9\177-\377]/) {
+	$thelastword = $theword;
+	$posthisword = $currentpos - length($theword);
+# Set your byte position now, since you will be modifying the
+# word you are sending to the index after this.
+	$filebyte =  $posthisword;
+# Convert ents to utf-8
+	if ($theword =~ /\&/) {
+		$theword = &charents2utf8($theword);
+		}
+# Convert other ents to things....
+	if ($theword =~ /\&/) {
+		$theword = &moreentsinword($theword);
+		}
+# You may have some semi-colons...
+	if ($theword =~ /;$/) {
+		if ($theword =~ /\&/) {
+			$runasubroutine = 1;  # Need to write this subr...
+		}
+		else {
+		$theword =~ s/;$//;
+		}
+	}
+        $WORD += 1;
+
+# Get rid of certain characters that don't break words, but don't index.
+# These are defined in textload.cfg or below by default.
+      if ($CHARSNOTTOINDEX) {
+           $theword =~ s/($CHARSNOTTOINDEX)//g;
+        }
+
+# Call a subroutine to distinguish between words beginning with an
+# upper case and lower case character.  This USED to be a proper
+# name split in ARTFL, but we don't see many databases with proper
+# names tagged.  
+
+      if ($taguppercasewords) {
+      	$theword = &areyoupropname($theword);
+      }
+
+# And then swtich everything to lower case
+      $theword = &lowercaseify($theword);
+
+# If you have tag exemptions and you have some of the replacement
+# characters "_", then delete them from the index entry.  I've put
+# in both options, just in case.  I'm on the fence about this at the
+# moment since I have "_" in characters to match above.
+      if ($tagexception && $theword =~ /\_/) {
+		$theword =~ s/\_//g;
+	}
+      if (!$tagexception && $theword =~ /\_/) {
+		$theword =~ s/\_//g;
+	}
+
+# Check to see if the word is longer than we want.  More than 235
+# characters appear to cause problems in the indexer.  Truncate
+# to the limit as set in textload.cfg
+      if (length($theword) > $LONGWORDLIMIT) {
+	print STDERR "LONG WORD:" . $theword . "\nTruncating for index...\n";
+        $theword = substr($theword,0,$LONGWORDLIMIT);
+	}		
+
+# And then print the word raw index entry.....
+  	printf "%s %s %d %d %d %d %d %d %d %d %s\n", "word", $theword, $docid, $DIV1, $DIV2, $DIV3, $PARA, $SENT, $WORD, $filebyte, $currentpagetag ;
+        $totalwordsindoc += 1;
+
+	if ($genworddocfreq) {                 # If we are counting words
+		&addtowordcount($theword);     # add this one.
+		}
+    }
+#
+#  If we are not in a line group, then let's check for a sentence.
+#  This is pretty rough and ready, since I would need to take
+#  Unicode uppercase, character entities uppercase, and so on.
+#  Keep it simple, since we use this only to bound searches.
+#  I am checking to make sure that we have at least a couple
+#  of words in the previous sentence.
+#  Your mileage may vary.  Should all databases be tagged with
+#  sentences?  Sure, but......
+#
+   elsif (!$INLINEGROUP && !$INTAGGEDSENT) {
+ 
+#  Always break on ! and ? 
+
+    if ($theword =~ /[\!\?]/) {
+	  if ($WORD > 2 ) {
+              $SENT += 1;
+              $WORD = -1;
+              $sentbyte = $currentpos;
+              print "sent $docid $DIV1 $DIV2 $DIV3 $PARA $SENT $sentbyte\n";
+	     }
+          }
+#  Periods are messy.  Let's try by length of previous word and
+#  capital letters to avoid hitting abbreviations.
+
+    elsif ($theword =~ /\./) {
+	  $isyousent = 1;
+	  $nextincount = $incount + 1;
+	  $thenextword = $wordlist[$nextincount];
+	 if (length($thelastword) < 3) {
+		if ($thelastword =~ /[A-Z0-9]/) {
+		    $isyousent = 0;
+		    }
+		}
+#  Periods in numbers don't break sentences.
+
+	  if ($thenextword =~ /^[a-z0-9]/) {
+		$isyousent = 0;
+		} 
+
+#  Probably want a few more rules ... but for the time being....
+#  Let's check and output if we have a sent.
+
+	  if ($isyousent) { 
+	     if ($WORD > 2 ) {
+	        $SENT += 1;
+          	$WORD = -1;
+                $sentbyte = $currentpos;
+                print "sent $docid $DIV1 $DIV2 $DIV3 $PARA $SENT $sentbyte\n";
+		}
+	     }
+	 }
+      }
+
+    }
+  }	
+}
+
+# That many closing } suggests to me that this baby needs to be
+# broken up.
+
+
+# =================================================================
+# Subroutine: docharents replaces a selected set of SGML character
+# ents with spaces in order to keep the byte count right.  We would
+# want to read a list of character ents that should NOT be considered
+# valid for including in words or, more likely, a list of VALID
+# characters from a general table.
+# =================================================================
+sub docharents {
+local ($bunchofwords);
+$bunchofwords = $_[0];
+
+if ($breakapost) {
+     $bunchofwords =~ s/\&apos;/\'     /gi;
+     }
+
+$bunchofwords =~ s/(\&space;)/" " x length($1)/gie;
+$bunchofwords =~ s/(\&mdash;)/" " x length($1)/gie;
+$bunchofwords =~ s/(\&nbsp;)/" " x length($1)/gie;
+$bunchofwords =~ s/(\&para;)/" " x length($1)/gie;
+$bunchofwords =~ s/(\&sect;)/" " x length($1)/gie;
+$bunchofwords =~ s/(\&ast;)/" " x length($1)/gie;
+$bunchofwords =~ s/(\&commat;)/" " x length($1)/gie;
+$bunchofwords =~ s/(\&ldquo;)/" " x length($1)/gie;
+$bunchofwords =~ s/(\&laquo;)/" " x length($1)/gie;
+$bunchofwords =~ s/(\&rdquo;)/" " x length($1)/gie;
+$bunchofwords =~ s/(\&raquo;)/" " x length($1)/gie;
+$bunchofwords =~ s/(\&lsquo;)/" " x length($1)/gie;
+$bunchofwords =~ s/(\&rsquo;)/" " x length($1)/gie;
+$bunchofwords =~ s/(\&quot;)/" " x length($1)/gie;
+$bunchofwords =~ s/(\&sup[0-9]*;)/" " x length($1)/gie;
+$bunchofwords =~ s/(\&mdash;)/" " x length($1)/gie;
+$bunchofwords =~ s/(\&amp;)/" " x length($1)/gie;
+$bunchofwords =~ s/(\&deg;)/" " x length($1)/gie;
+$bunchofwords =~ s/(\&ndash;)/" " x length($1)/gie;
+$bunchofwords =~ s/(\&copy;)/" " x length($1)/gie;
+$bunchofwords =~ s/(\&gt;)/" " x length($1)/gie;
+$bunchofwords =~ s/(\&lt;)/" " x length($1)/gie;
+$bunchofwords =~ s/(\&frac[0-9]*;)/" " x length($1)/gie;
+$bunchofwords =~ s/(\&pound;)/" " x length($1)/gie;
+$bunchofwords =~ s/(\&colon;)/" " x length($1)/gie;
+$bunchofwords =~ s/(\&hyphen;)/" " x length($1)/gie;
+$bunchofwords =~ s/(\&dash;)/" " x length($1)/gie;
+$bunchofwords =~ s/(\&excl;)/" " x length($1)/gie;
+$bunchofwords =~ s/(\&dagger;)/" " x length($1)/gie;
+$bunchofwords =~ s/(\&ddagger;)/" " x length($1)/gie;
+$bunchofwords =~ s/(\&times;)/" " x length($1)/gie;
+$bunchofwords =~ s/(\&blank;)/" " x length($1)/gie;
+$bunchofwords =~ s/(\&dollar;)/" " x length($1)/gie;
+$bunchofwords =~ s/(\&cent;)/" " x length($1)/gie;
+$bunchofwords =~ s/(\&verbar;)/" " x length($1)/gie;
+$bunchofwords =~ s/(\&quest;)/" " x length($1)/gie;
+$bunchofwords =~ s/(\&hellip;)/" " x length($1)/gie;
+$bunchofwords =~ s/(\&percnt;)/" " x length($1)/gie;
+$bunchofwords =~ s/(\&middot;)/" " x length($1)/gie;
+$bunchofwords =~ s/(\&plusmn;)/" " x length($1)/gie;
+$bunchofwords =~ s/(\&sqrt;)/" " x length($1)/gie;
+$bunchofwords =~ s/(\&sol;)/" " x length($1)/gie;
+$bunchofwords =~ s/(\&sdash;)/" " x length($1)/gie;
+$bunchofwords =~ s/(\&equals;)/" " x length($1)/gie;
+$bunchofwords =~ s/(\&ornament;)/" " x length($1)/gie;
+$bunchofwords =~ s/(\&rule;)/" " x length($1)/gie;
+$bunchofwords =~ s/(\&prime;)/" " x length($1)/gie;
+$bunchofwords =~ s/(\&rsqb;)/" " x length($1)/gie;
+$bunchofwords =~ s/(\&lsqb;)/" " x length($1)/gie;
+# EEBO specials
+$bunchofwords =~ s/(\&punc;)/" " x length($1)/gie;
+$bunchofwords =~ s/(\&cross;)/" " x length($1)/gie;
+$bunchofwords =~ s/(\&diamond;)/" " x length($1)/gie;
+$bunchofwords =~ s/(\&lpunctel;)/" " x length($1)/gie;
+$bunchofwords =~ s/(\&lsemicol;)/" " x length($1)/gie;
+$bunchofwords =~ s/(\&plus;)/" " x length($1)/gie;
+$bunchofwords =~ s/(\&minus;)/" " x length($1)/gie;
+$bunchofwords =~ s/(\&ounce;)/" " x length($1)/gie;
+$bunchofwords =~ s/(\&rindx;)/" " x length($1)/gie;
+$bunchofwords =~ s/(\&lindx;)/" " x length($1)/gie;
+$bunchofwords =~ s/(\&leaf;)/" " x length($1)/gie;
+$bunchofwords =~ s/(\&radic;)/" " x length($1)/gie;
+$bunchofwords =~ s/(\&dram;)/" " x length($1)/gie;
+$bunchofwords =~ s/(\&sun;)/" " x length($1)/gie;
+
+# $bunchofwords =~ s/(\&shy;)/" " x length($1)/gie;
+
+return ($bunchofwords);
+}
+
+# =================================================================
+# Subroutine: havelowerdiv looks ahead in the input stream to
+# see if we have a div immediately following the current tag.  
+# =================================================================
+
+sub havelowerdiv() {
+local ($lowerdiv, $lookahead, $nextline, $readmore, $i);
+$lookahead = $inlinecount;
+$i = 0;
+while (!$lowerdiv && $i < $LOOKHOWFAR) {
+        $lookahead += 1;
+        $nextline = $INSTREAM[$lookahead];
+        $i++;
+        if ($nextline =~ /<div/i) {
+                $lowerdiv = 1;
+                }
+    }
+return $lowerdiv;
+}
+
+# =================================================================
+# Subroutine: makesqlsubdivrecord prints a tabdelimited subdiv 
+# (paragraph block) level record for each type.... of subdiv.
+sub makesqlsubdivrecord() {
+local ($thedivtag, $philoid, $therecord);
+$thedivtag = $_[0];
+$thedivtag =~ s/\t//g;
+$philoid = $docid .":". $DIV1 .":". $DIV2 .":". $DIV3 .":". $PARA;
+$therecord = $philoid . "\t";
+
+$divinfo = "";
+$thedivtag =~ m/<([a-z0-9]*)[ >]/i;
+$divinfo = $1;
+
+if (!$divinfo) {
+	$divinfo = "SUBDIVTAGERROR: $thedivtag";
+	}
+$therecord .= $divinfo . "\t";
+
+$divinfo = "";
+if ($thedivtag =~ / type="([^"]*)"/i) {
+        $thedivtag =~ s/ type="([^"]*)"//i;
+        $divinfo = $1;
+	$divinfo = &charents2utf8($divinfo); 
+        }
+$therecord .= $divinfo . "\t";
+
+$divinfo = "";
+if ($thedivtag =~ / n="([^"]*)"/i) {
+        $thedivtag =~ s/ n="([^"]*)"//i;
+        $divinfo = $1;
+        }
+$therecord .= $divinfo . "\t";
+
+$divinfo = "";
+if ($thedivtag =~ / id="([^"]*)"/i) {
+        $thedivtag =~ s/ id="([^"]*)"//i;
+        $divinfo = $1;
+        }
+$therecord .= $divinfo . "\t";
+
+$divinfo = "";
+if ($thedivtag =~ / who="([^"]*)"/i) {
+        $thedivtag =~ s/ who="([^"]*)"//i;
+        $divinfo = $1;
+	$divinfo = &charents2utf8($divinfo);
+        }
+$therecord .= $divinfo . "\t";
+
+$divinfo = "";
+if ($thedivtag =~ / lang="([^"]*)"/i) {
+        $thedivtag =~ s/ lang="([^"]*)"//i;
+        $divinfo = $1;
+        }
+$therecord .= $divinfo . "\t";
+
+if ($DUMPXPATHS) {
+	$therecord .= $thecurrentxpath . "\t";
+	}
+else {
+	$therecord .= "\t";
+}
+
+#  $therecord .= $thedivtag . "\t";
+
+$therecord .= $docid . "\n";
+if ($debug) {
+        print "SQLSUBDIV\t" . $therecord;
+        }
+print SUBDIVINDEXFILE "$therecord";
+}
+
+	
+
+# =================================================================
+# Subroutine: makesqlrecord prints a tabdelimited div level record
+# for each div containing the title info, type, n, id, etc. with the
+# philologic div ID and a field open for an XPATH address.  To
+# be used for div object searching.
+# Question: should I walk thru all <div attributes and build this
+# as part of the table?  Each valid attribute would be slotted in
+# a specific field.
+# =================================================================
+
+sub makesqlrecord() {
+local ($thedivtag, $philoid, $therecord, $divinfo, $thisdivtype);
+local ($thisopenclose);
+$philoid = $_[0]; 
+$thedivtag = $_[1]; 
+
+if ($debug) {
+	print "SQLDIVTAG: $thedivtag \n";
+	}
+
+$therecord = $philoid . "\t";
+if ($thedivtag =~ /<front/i && !$DIVHEAD) {
+	$therecord .= "Front Matter\t";
+	}
+else {
+	$therecord .= $DIVHEAD . "\t";
+}
+# Extract standard stuff, set it in fields.
+$thedivtag =~ s/\t//g;
+$divinfo = "";
+
+if ($thedivtag =~ /<front/i) {
+	$thisdivtype = "front";
+}
+
+if ($thedivtag =~ / type="([^"]*)"/i) {
+	$thedivtag =~ s/ type="([^"]*)"//i;
+	$divinfo = $1;
+	$thisdivtype = $divinfo;
+	$thisdivtype =~ tr/A-Z/a-z/;
+	$thisdivtype = &charents2utf8($thisdivtype);
+	}
+$therecord .= $thisdivtype . "\t";
+
+$divinfo = "";
+if ($thedivtag =~ / lang="([^"]*)"/i) {
+        $thedivtag =~ s/ lang="([^"]*)"//i;
+        $divinfo = $1;
+        }
+$therecord .= $divinfo . "\t";
+
+$divinfo = "";
+if ($thedivtag =~ / n="([^"]*)"/i) {
+        $thedivtag =~ s/ n="([^"]*)"//i;
+        $divinfo = $1;
+        }
+$therecord .= $divinfo . "\t";
+
+$divinfo = "";
+if ($thedivtag =~ / id="([^"]*)"/i) {
+        $thedivtag =~ s/ id="([^"]*)"//i;
+        $divinfo = $1;
+        }
+$therecord .= $divinfo . "\t";
+
+# New extensions: these are to be read ahead and parsed
+# assuming opener/closer in the div..... 
+
+$divocauthor = "";
+$divocdateline = "";
+$divocplacename = "";
+$divocsalutation = "";
+$divocclassification = "";
+$divocpartofspeech = "";
+
+if ($GetDivOpenClose && $gotopenclose) {
+	if ($thedivtag =~ /<div/i) {
+		$thisopenclose = &readdivopenclose($thisdivtype, $thedivtag);
+		}
+	if ($thisopenclose) {
+		&extractopenclosedata($thisopenclose);
+		}
+	}
+
+$therecord .= $divocauthor . "\t";
+$therecord .= $divocdateline . "\t";
+$therecord .= $divocplacename . "\t";
+$therecord .= $divocsalutation . "\t";
+$therecord .= $divocclassification . "\t";
+$therecord .= $divocpartofspeech . "\t";
+
+if ($DUMPXPATHS) {
+        $therecord .= $thecurrentxpath . "\t";
+        }
+else {
+        $therecord .= "\t";
+}
+
+$therecord .= $docid;
+$therecord .= "\n";
+if ($debug) {
+	print "SQLDIV\t" . $therecord;
+	}
+print DIVINDEXFILE "$therecord";
+
+}
+
+# =================================================================
+# Subroutine: extractopenclosedata, using a very simple parser, this
+#             extracts data from div level opener and closers to
+#             populate fields in the divindex table.
+# BUG: Do I need to pop a field after an </ field?????
+# =================================================================
+sub extractopenclosedata() {
+	local ($oc, $creek, $stream, $line, $thisopenclosedata, $ofinterest);
+	local ($n, $pat, $selector, $t);
+	$oc = $_[0];
+	@ofinterest =("dateline", "salute", "signed", "author", "date");
+	$oc =~ s/\n\n*/\n/g;
+	@creek = split(/\n/, $oc);
+	foreach $line (@creek) {
+		if ($line =~ /^<[a-z]/i) {
+			foreach	$n (@ofinterest) {
+				$pat = "<" . $n . "[ >]";
+				if ($line =~ /$pat/i) {
+					$selector = $n;
+				}
+			}
+		}
+		elsif ($line =~ /^<\//) {
+			$selector = "other";
+			$donothing = 0;
+			}
+		else {
+			$thisopenclosedata{$selector} .= $line . " ";
+		}
+	}
+
+        $divocdateline = $thisopenclosedata{"dateline"};
+	delete $thisopenclosedata{"dateline"};
+	if ($divocdateline) {
+		$divocdateline = &fixopenclose($divocdateline);
+		}
+	$t = $thisopenclosedata{"date"};
+	delete $thisopenclosedata{"date"};
+	if ($t) {
+		$t = &fixopenclose($t);
+		$divocdateline .= " " . $t;
+		}
+        $divocauthor = $thisopenclosedata{"signed"};
+	delete $thisopenclosedata{"signed"};
+	if ($divocauthor) {
+		$divocauthor = &fixopenclose($divocauthor);
+		}
+	if (!$divocauthor) {
+        	$divocauthor = $thisopenclosedata{"author"};
+		delete $thisopenclosedata{"author"};
+		if ($divocauthor) {
+			$divocauthor = &fixopenclose($divocauthor);
+			}
+		} 
+
+        $divocsalutation = $thisopenclosedata{"salute"};
+	delete $thisopenclosedata{"salute"};
+	if ($divocsalutation) {
+		$divocsalutation = &fixopenclose($divocsalutation);
+		}
+
+}
+
+# =================================================================
+# Subroutine: fixopenclose, runs standard conversions for the info
+#             found in div opener and closer structures.
+# =================================================================
+sub fixopenclose() {
+	local ($tofix);
+	$tofix = $_[0];
+	$tofix = &docharents($tofix);
+        $tofix = &charents2utf8($tofix);
+        $tofix = &moreentsinword($tofix);
+        $tofix =~ s/<[^>]*>/ /g;
+        $tofix =~ s/\n/ /g;
+        $tofix =~ s/_//g;
+        $tofix =~ s/\t/ /g;
+        $tofix =~ s/  */ /g;
+        $tofix =~ s/^  *//;
+        $tofix =~ s/  *$//;
+return ($tofix);
+}
+
+# =================================================================
+# Subroutine: readdivopenclose, using a very simple parser, this
+#             this reads ahead from div to get opener and closer 
+#             data.  I really shold reimplement this and the get
+#             head data into a single function using the poor man's
+#             parser, which could also be used for generating XPATHS.
+#             This would, of course, be limited to XML docs.
+# =================================================================
+sub readdivopenclose() {
+	local ($tag, $type, $linein, $readahead, $endtag, $x, $readmore);
+	local ($ttag, $y, $opener, $closer, $inopener, $incloser, $looplimit);
+	local ($rtn);
+	$looplimit = 10000;
+	$type = $_[0];
+	$ttag = $_[1];
+	$ttag =~ m/<([A-Za-z]*)/i;
+	$tag = "<" . $1;
+	$endtag = $tag;
+	$endtag =~ s/</<\//;
+	$readmore = 1;
+	$x = $inlinecount;
+	while ($readmore && $y < $looplimit) {
+		$x++;
+		$y++;
+		$readahead = $INSTREAM[$x]; 
+
+		if ($readahead =~ /<q[ >]/i) {
+			$readmore = 0;
+			}
+                if ($readahead =~ /<text/i) {
+			$readmore = 0;
+			}
+                if ($readahead =~ /<body/i) {
+			$readmore = 0;
+			}
+
+		if ($readahead =~ /$endtag/i || $readahead =~ /$tag/i) {
+			$readmore = 0;
+			}
+		if ($readahead =~ /<opener/i) {
+			$inopener++;
+			}
+		if ($readahead =~ /<\/opener/i) {
+                        $opener .= $readahead . "\n";
+                        $inopener = 0;
+                	}
+		if ($inopener) {
+			$opener .= $readahead . "\n";
+			}
+		if ($readahead =~ /<closer/i) {
+			$incloser++;
+			}
+		if ($readahead =~ /<\/closer/i) {
+                        $closer .= $readahead . "\n";
+                        $incloser = 0;
+                	}
+		if ($incloser) {
+			$closer .= $readahead . "\n";
+			}
+		
+		}
+	if ($opener) {
+		$rtn = $opener . "\n";
+		}
+	if ($closer) {
+		$rtn .= $closer . "\n";
+		}
+return $rtn;
+}
+	
+# =================================================================
+# Subroutine: charents2utf8 converts ISO-LATIN-1 character entities in
+# index words to UTF-8 for standard word index search consistency.  
+# This is for SGML data sets and XML that have character ents rather
+# than UTF-8 characters.  Should really come from a table
+# =================================================================
+
+sub charents2utf8 () {
+     local ($theword); 
+     $theword = $_[0];
+     if (!$flattenligatures) {
+           $theword =~ s/\&AElig;/\xc3\x86/g; 
+           $theword =~ s/\&szlig;/\xc3\x9F/g;
+           $theword =~ s/\&aelig;/\xc3\xA6/g;
+	   }
+     $theword =~ s/\&Agrave;/\xc3\x80/g; 
+     $theword =~ s/\&Aacute;/\xc3\x81/g; 
+     $theword =~ s/\&Acirc;/\xc3\x82/g;
+     $theword =~ s/\&Atilde;/\xc3\x83/g;
+     $theword =~ s/\&Auml;/\xc3\x84/g;
+     $theword =~ s/\&Aring;/\xc3\x85/g;
+     $theword =~ s/\&Ccedil;/\xc3\x87/g;
+     $theword =~ s/\&Egrave;/\xc3\x88/g;
+     $theword =~ s/\&Eacute;/\xc3\x89/g;
+     $theword =~ s/\&Ecirc;/\xc3\x8A/g;
+     $theword =~ s/\&Euml;/\xc3\x8B/g;
+     $theword =~ s/\&Igrave;/\xc3\x8C/g;
+     $theword =~ s/\&Iacute;/\xc3\x8D/g;
+     $theword =~ s/\&Icirc;/\xc3\x8E/g;
+     $theword =~ s/\&Iuml;/\xc3\x8F/g;
+     $theword =~ s/\&ETH;/\xc3\x90/g;
+     $theword =~ s/\&Ntilde;/\xc3\x91/g;
+     $theword =~ s/\&Ograve;/\xc3\x92/g;
+     $theword =~ s/\&Oacute;/\xc3\x93/g;
+     $theword =~ s/\&Ocirc;/\xc3\x94/g;
+     $theword =~ s/\&Otilde;/\xc3\x95/g;
+     $theword =~ s/\&Ouml;/\xc3\x96/g;
+     $theword =~ s/\&#215;/\xc3\x97/g; # MULTIPLICATION SIGN
+     $theword =~ s/\&Oslash;/\xc3\x98/g;
+     $theword =~ s/\&Ugrave;/\xc3\x99/g;
+     $theword =~ s/\&Uacute;/\xc3\x9A/g;
+     $theword =~ s/\&Ucirc;/\xc3\x9B/g;
+     $theword =~ s/\&Uuml;/\xc3\x9C/g;
+     $theword =~ s/\&Yacute;/\xc3\x9D/g;
+     $theword =~ s/\&THORN;/\xc3\x9E/g;
+     $theword =~ s/\&agrave;/\xc3\xA0/g;
+     $theword =~ s/\&aacute;/\xc3\xA1/g;
+     $theword =~ s/\&acirc;/\xc3\xA2/g;
+     $theword =~ s/\&atilde;/\xc3\xA3/g;
+     $theword =~ s/\&auml;/\xc3\xA4/g;
+     $theword =~ s/\&aring;/\xc3\xA5/g;
+     $theword =~ s/\&ccedil;/\xc3\xA7/g;
+     $theword =~ s/\&egrave;/\xc3\xA8/g;
+     $theword =~ s/\&eacute;/\xc3\xA9/g;
+     $theword =~ s/\&ecirc;/\xc3\xAA/g;
+     $theword =~ s/\&euml;/\xc3\xAB/g;
+     $theword =~ s/\&igrave;/\xc3\xAC/g;
+     $theword =~ s/\&iacute;/\xc3\xAD/g;
+     $theword =~ s/\&icirc;/\xc3\xAE/g;
+     $theword =~ s/\&iuml;/\xc3\xAF/g;
+     $theword =~ s/\&eth;/\xc3\xB0/g;
+     $theword =~ s/\&ntilde;/\xc3\xB1/g;
+     $theword =~ s/\&ograve;/\xc3\xB2/g;
+     $theword =~ s/\&oacute;/\xc3\xB3/g;
+     $theword =~ s/\&ocirc;/\xc3\xB4/g;
+     $theword =~ s/\&otilde;/\xc3\xB5/g;
+     $theword =~ s/\&ouml;/\xc3\xB6/g;
+     $theword =~ s/\&#247;/\xc3\xB7/g;   #  DIVISION SIGN
+     $theword =~ s/\&oslash;/\xc3\xB8/g;
+     $theword =~ s/\&ugrave;/\xc3\xB9/g;
+     $theword =~ s/\&uacute;/\xc3\xBA/g;
+     $theword =~ s/\&ucirc;/\xc3\xBB/g;
+     $theword =~ s/\&uuml;/\xc3\xBC/g;
+     $theword =~ s/\&yacute;/\xc3\xBD/g;
+     $theword =~ s/\&thorn;/\xc3\xBE/g;
+     $theword =~ s/\&yuml;/\xc3\xBF/g;
+# Greek Entities for HTML4 and Chadwock Healey -- Charles Cooney
+    $theword =~ s/\&agr;/\xce\xb1/g;
+    $theword =~ s/\&alpha;/\xce\xb1/g;
+    $theword =~ s/\&bgr;/\xce\xb2/g;
+    $theword =~ s/\&beta;/\xce\xb2/g;
+    $theword =~ s/\&ggr;/\xce\xb3/g;
+    $theword =~ s/\&gamma;/\xce\xb3/g;
+    $theword =~ s/\&dgr;/\xce\xb4/g;
+    $theword =~ s/\&delta;/\xce\xb4/g;
+    $theword =~ s/\&egr;/\xce\xb5/g;
+    $theword =~ s/\&epsilon;/\xce\xb5/g;
+    $theword =~ s/\&zgr;/\xce\xb6/g;
+    $theword =~ s/\&zeta;/\xce\xb6/g;
+    $theword =~ s/\&eegr;/\xce\xb7/g;
+    $theword =~ s/\&eta;/\xce\xb7/g;
+    $theword =~ s/\&thgr;/\xce\xb8/g;
+    $theword =~ s/\&theta;/\xce\xb8/g;
+    $theword =~ s/\&igr;/\xce\xb9/g;
+    $theword =~ s/\&iota;/\xce\xb9/g;
+    $theword =~ s/\&kgr;/\xce\xba/g;
+    $theword =~ s/\&kappa;/\xce\xba/g;
+    $theword =~ s/\&lgr;/\xce\xbb/g;
+    $theword =~ s/\&lambda;/\xce\xbb/g;
+    $theword =~ s/\&mgr;/\xce\xbc/g;
+    $theword =~ s/\&mu;/\xce\xbc/g;
+    $theword =~ s/\&ngr;/\xce\xbd/g;
+    $theword =~ s/\&nu;/\xce\xbd/g;
+    $theword =~ s/\&xgr;/\xce\xbe/g;
+    $theword =~ s/\&xi;/\xce\xbe/g;
+    $theword =~ s/\&ogr;/\xce\xbf/g;
+    $theword =~ s/\&omicron;/\xce\xbf/g;
+    $theword =~ s/\&pgr;/\xcf\x80/g;
+    $theword =~ s/\&pi;/\xcf\x80/g;
+    $theword =~ s/\&rgr;/\xcf\x81/g;
+    $theword =~ s/\&rho;/\xcf\x81/g;
+    $theword =~ s/\&sfgr;/\xcf\x82/g;
+    $theword =~ s/\&sigmaf;/\xcf\x82/g;
+    $theword =~ s/\&sgr;/\xcf\x83/g;
+    $theword =~ s/\&sigma;/\xcf\x83/g;
+    $theword =~ s/\&tgr;/\xcf\x84/g;
+    $theword =~ s/\&tau;/\xcf\x84/g;
+    $theword =~ s/\&ugr;/\xcf\x85/g;
+    $theword =~ s/\&upsilon;/\xcf\x85/g;
+    $theword =~ s/\&phgr;/\xcf\x86/g;
+    $theword =~ s/\&phi;/\xcf\x86/g;
+    $theword =~ s/\&khgr;/\xcf\x87/g;
+    $theword =~ s/\&chi;/\xcf\x87/g;
+    $theword =~ s/\&psgr;/\xcf\x88/g;
+    $theword =~ s/\&psi;/\xcf\x88/g;
+    $theword =~ s/\&ohgr;/\xcf\x89/g;
+    $theword =~ s/\&omega;/\xcf\x89/g;
+    $theword =~ s/\&Agr;/\xce\x91/g;
+    $theword =~ s/\&Alpha;/\xce\x91/g;
+    $theword =~ s/\&Bgr;/\xce\x92/g;
+    $theword =~ s/\&Beta;/\xce\x92/g;
+    $theword =~ s/\&Ggr;/\xce\x93/g;
+    $theword =~ s/\&Gamma;/\xce\x93/g;
+    $theword =~ s/\&Dgr;/\xce\x94/g;
+    $theword =~ s/\&Delta;/\xce\x94/g;
+    $theword =~ s/\&Egr;/\xce\x95/g;
+    $theword =~ s/\&Epsilon;/\xce\x95/g;
+    $theword =~ s/\&Zgr;/\xce\x96/g;
+    $theword =~ s/\&Zeta;/\xce\x96/g;
+    $theword =~ s/\&EEgr;/\xce\x97/g;
+    $theword =~ s/\&Eta;/\xce\x97/g;
+    $theword =~ s/\&THgr;/\xce\x98/g;
+    $theword =~ s/\&Theta;/\xce\x98/g;
+    $theword =~ s/\&Igr;/\xce\x99/g;
+    $theword =~ s/\&Iota;/\xce\x99/g;
+    $theword =~ s/\&Kgr;/\xce\x9a/g;
+    $theword =~ s/\&Kappa;/\xce\x9a/g;
+    $theword =~ s/\&Lgr;/\xce\x9b/g;
+    $theword =~ s/\&Lambda;/\xce\x9b/g;
+    $theword =~ s/\&Mgr;/\xce\x9c/g;
+    $theword =~ s/\&Mu;/\xce\x9c/g;
+    $theword =~ s/\&Ngr;/\xce\x9d/g;
+    $theword =~ s/\&Nu;/\xce\x9d/g;
+    $theword =~ s/\&Xgr;/\xce\x9e/g;
+    $theword =~ s/\&Xi;/\xce\x9e/g;
+    $theword =~ s/\&Ogr;/\xce\x9f/g;
+    $theword =~ s/\&Omicron;/\xce\x9f/g;
+    $theword =~ s/\&Pgr;/\xce\xa0/g;
+    $theword =~ s/\&Pi;/\xce\xa0/g;
+    $theword =~ s/\&Rgr;/\xce\xa1/g;
+    $theword =~ s/\&Rho;/\xce\xa1/g;
+    $theword =~ s/\&Sgr;/\xce\xa3/g;
+    $theword =~ s/\&Sigma;/\xce\xa3/g;
+    $theword =~ s/\&Tgr;/\xce\xa4/g;
+    $theword =~ s/\&Tau;/\xce\xa4/g;
+    $theword =~ s/\&Ugr;/\xce\xa5/g;
+    $theword =~ s/\&Upsilon;/\xce\xa5/g;
+    $theword =~ s/\&PHgr;/\xce\xa6/g;
+    $theword =~ s/\&Phi;/\xce\xa6/g;
+    $theword =~ s/\&KHgr;/\xce\xa7/g;
+    $theword =~ s/\&Chi;/\xce\xa7/g;
+    $theword =~ s/\&PSgr;/\xce\xa8/g;
+    $theword =~ s/\&Psi;/\xce\xa8/g;
+    $theword =~ s/\&OHgr;/\xce\xa9/g;
+    $theword =~ s/\&Omega;/\xce\xa9/g;
+
+
+return $theword;
+
+}
+
+# =================================================================
+# Subroutine: moreentsinword handles character entities in
+# index words.  There should not be many of these.         
+# =================================================================
+
+sub moreentsinword() {
+local ($theword);
+     $theword = $_[0];
+     $theword =~ s/\&apos;/\'/gi;
+     $theword =~ s/\&s;/s/gi;
+     $theword =~ s/\&([A-Za-z])macr;/$1/gi;
+     $theword =~ s/\&inverted([a-zA-Z0-9]);/$1/gi;  # WWP &invertedu; etc.
+     $theword =~ s/\&supp([a-z0-9]);/$1/gi;         # WWP &sup-.;
+     if ($flattenligatures) {
+	$theword =~ s/\&([A-Za-z][A-Za-z])lig;/$1/gi;
+	}
+return $theword;
+}
+
+# =================================================================
+# Subroutine: areyoupropname identifies upper case characters.  This
+# could be modified to tag only proper names if we ever see a database
+# with these. This is selected from an option set at the top.  Should
+# work for Latin Characters.  
+# =================================================================
+
+sub areyoupropname() {
+local ($theword);
+     $theword = $_[0];
+#     $theword =~ s/^(\p{IsUpper})/\256$1/g;
+     $theword =~ s/^([A-Z])/\256$1/;
+     $theword =~ s/^(\xc3[\x80-\x9E])/\256$1/;
+return ($theword);
+}
+
+# =================================================================
+# Subroutine: lowercaseify   translate the index entry word to
+# lowercase characters.  Recall the we have the proper name tag "\256".  
+# Need to handle this for all Unicode. 
+# =================================================================
+
+sub lowercaseify() {
+local ($theword);
+     $theword = $_[0];
+     $theword =~ tr/A-Z/a-z/;
+#     $theword =~ s/(\p{IsUpper})/\l$1/g;
+     $theword =~ s/\xc3([\x80-\x9E])/&up2low($1)/ge;
+return ($theword);
+}
+
+sub up2low() {
+local ($onechar, $rtn);
+      $onechar = $_[0];
+      $onechar =~ tr/\x80-\x9E/\xA0-\xBE/;
+      $rtn = "\xc3" . $onechar;
+return $rtn;
+}
+
+# =================================================================
+# Subroutine: inwordtagdel  An experimental inword tag spanner.  
+# For selected tags between letters, this replaces the tag with "_" 
+# (in order to keep the byte count).  This is to allow indexing of
+# words broken by tags.  
+# =================================================================
+sub inwordtagdel() {
+    local ($e);
+    foreach $e (@listofexempttags) {
+       $thewholething =~ s/([A-Za-z;])($e)([A-Za-z&])/&tagempt($1,$2,$3)/gie; 
+    }
+}
+
+sub tagempt() {
+    local ($let1, $thetag, $let2, $rtn);
+    $let1 = $_[0];
+    $thetag = $_[1];
+    $let2 = $_[2];
+    $thetag =~ s/(<[^>]*>)/"_" x length($1)/gie;
+    $rtn = $let1 . $thetag . $let2;
+    return $rtn;
+} 
+
+# =================================================================
+# Subroutine: TagWordDel 
+# Delete tag data endtag set specified in the list @listoignore.
+# Replace with string of " "in order to keep the byte count.  This is 
+# selection of things to NOT to index.
+# =================================================================
+sub TagWordDel() {      
+    local ($e);             
+    foreach $e (@listtoignore) {
+       $thewholething =~ s/($e)/" " x length($1)/gie;
+    }
+}
+
+# =================================================================
+# Subroutine: JoinHyphenWords
+# =================================================================
+sub JoinHyphenWords() {
+       $thewholething =~ s/(\&shy;[\n \t]*<lb\/>)/"_" x length($1)/gie;
+       $thewholething =~ s/(\&shy;[\n \t]*)/"_" x length($1)/gie;
+}
+
+
+# =================================================================
+# Subroutine: makerefidtable
+# Build table for handling <REFs and elements with IDs such as
+# <PB ID="p397" N="397">
+# <NOTE ID="norton-dreamnote12" PLACE="foot">
+# <REF REND="align(right)" TARGET="pf42">
+# <note id="n3" place="foot" anchored="yes" target="ref3">
+# <ref id="ref3" target="n3" targOrder="U">
+# Filehandle = REFIDTABLE
+# =================================================================
+sub makerefidtable () {
+    local ($thetag, $tagtype, $theid, $thetarget, $therecord);
+    $thetag = $_[0];
+    $thetag =~ s/<([a-zA-Z]*)//i;
+    $tagtype = $1;
+    $thetag =~ s/ id="([^"]*)"//i;
+    $theid = $1;
+    if ($theid) {
+	$therecord = $docid . "\t";
+    	$therecord .= $theid . "\t";
+    	$therecord .= $tagtype . "\t";
+# Current paragraph, which will be a note.
+	$therecord .= $DIV1 . ":" . $DIV2 . ":" . $DIV3 . ":" . $PARA . "\t";
+# Page object ... I should check this
+	$therecord .= $docpgobject . "\t";
+# And let's give them a DIV to aim at.  
+	$therecord .= $DIV1 . ":" . $DIV2 . ":" . $DIV3 . "\t";
+	$therecord .= "\n";
+	}
+    print REFIDTABLE $therecord;
+}
+
+# =================================================================
+# Subroutine: AbbrevExpand  <abbr expan="en">&emacr;</abbr>
+# =================================================================
+sub AbbrevExpand {
+	local ($rtn, $theabbrev, $p, $x, $y, $n, $abbrevcopy, $underchars);
+	$theabbrev = $_[0];
+	$abbrevcopy = $theabbrev;
+	$theabbrev =~ s/ expan="([^"]*)"//i;
+	$x = $1;
+	if ($x) {
+		$y = length($abbrevcopy);
+		$n = length($x);
+		$p = $y - $n;
+		$underchars = "_" x $p;
+		$rtn = $x . $underchars;
+		}
+	else {
+		$rtn = $abbrevcopy;
+		}
+return $rtn;
+}
+
+# =================================================================
+# Subroutine: addtowordcount  Build the associative array for the
+# word count.  It's here just in case I need to add things.  This
+# is the word as INDEXED.    
+# =================================================================
+sub addtowordcount {
+	local ($theword);
+	$theword = $_[0];
+	$THISDOCWORDCOUNT{$theword}++;
+	}
+# =================================================================
+# Subroutine: dumpthisdoccount  Write out the associative array of the
+# word count for this document.  This dumps the file into a directory
+# in work/$WORDDOCFREQDIR/ called $docid (our standard convention).
+# These will need to be copied to the target directory on installation.
+# Maybe I should just dump these right to the target directory.  Post
+# processing will be required.  I could put these scripts in the
+# directory and leave a README.  Not a standard Philo function at
+# this point.
+# DUMPS: word freq docid\n  
+# (docid since these will be merged for later processing.  Yes, I 
+# could use the filename, but I'm a wimp.
+# =================================================================
+sub dumpthisdoccount {
+	local($dirandfile, $docword, $wordfreq, $x, $y);
+	$dirandfile = $WORDDOCFREQDIR . "/" . $docid . ".rawfreq";
+	open(THISDOCCOUNT, ">$dirandfile");
+	foreach $docword (sort keys(%THISDOCWORDCOUNT)) {
+	  $x++;
+	  print THISDOCCOUNT "$docword $THISDOCWORDCOUNT{$docword} $docid\n";
+	  $y += $THISDOCWORDCOUNT{$docword};
+	  delete $THISDOCWORDCOUNT{$docword};
+	  }
+	print THISDOCCOUNT "ZZZ:TYPECOUNT $x\n";
+	print THISDOCCOUNT "ZZZ:TOKENCOUNT $y\n";
+	close (THISDOCCOUNT);
+}	
+
+# =================================================================
+# Subroutine: DeleteUnicodeWordBreakers ... replace UTF byte sequences
+#             with spaces before breaking into words.  This list is 
+#             set in textload.cfg and called only when 
+#             $HaveUnicodeWordBreakers is set.  This may be dangerous
+#             because you may find places where deleting this range
+#             breaks real characters.
+sub DeleteUnicodeWordBreakers {
+	local ($x, $line);
+	$line = $_[0];
+	foreach $x (@UnicodeWordBreakers) {
+		$line =~ s/($x)/" " x length($1)/gie;
+		}
+return $line;
+
+}
+
+# =================================================================
+# Subroutine: textloadpresets, if I can't find textload.cfg, I will
+#             use these presets.
+#             Set 1 = ON   0 = OFF.  Other values vary.  
+# This is hopefully a failsafe and should never be consulted
+#  =================================================================
+sub textloadpresets {
+# --------------------- Set Apostrophe Break ------------------------
+# Set to 1 to break words on apostrophe.  Probably 0 for
+# English, 1 for French.  Your milage may vary.
+$breakapost = 0;  
+
+# ------------------------ Define Word Pattern ----------------------
+# What word pattern do you want to use?  This is important.
+# We will want to add optional characters like {[]} for MSS 
+# notation and then set a function to delete these for the index 
+# in order to search across them.  [Note, leave "_" in the
+# second pattern to handle tags in words, etc., see below]
+$CHARSINWORD = "[\&A-Za-z0-9\177-\377][\&A-Za-z0-9\177-\377\_\';]*";
+
+# ------------- Define Characters to Exclude from Index words -------
+# Leading to a second list, characters which can be in words
+# but you don't want to index.  I have not implemented this yet.  
+# Need an example.
+$CHARSNOTTOINDEX = "\[\{\]\}";
+
+# ------------------------ Dump Object Table ------------------------
+# SQL div table set, which dumps out a tab delimited line
+# of div level info, philo id, etc.  See below.  Leave this on.
+$printsqldivtable = 1;
+
+# ------------------------ Dump SubDiv Object Table -----------------
+# SQL div table set, which dumps out a tab delimited line
+# of subdiv level info, philo id, etc.  Experimental.  The idea is
+# to generate a table of para level objects, like stage directions
+# and the like in order to search these.  See below.  Leave this on.
+$printsqlsubdivtable = 1;
+
+# ------------------------ Generate Document Word Counts ------------
+# Turn this on to generate a document word count.  This will be
+# used in future for the PhiloLogic frequency package, giving
+# users word counts for documents, and possibly for z-score statistical
+# analysis.
+$genworddocfreq = 1;
+
+# ----------------------- Tag Upper Case Characters -----------------
+# Tag upper case.  This used to be for proper names, but we have
+# used it to tag upper case.   Leave it off unless you really need it.
+# Should be expanded to handle <name tags.
+$taguppercasewords = 0;
+
+# ---------------------- Treat Lines as Sentences --------------------
+# In linegroups, break sentence objects on <l and turn off
+# automatic sentence recognition.  Normally off.
+$lngrpbreaksent = 0;
+
+# ---------------------- Flatten Ligatures for Indexing --------------
+# Convert SGML ligatures to base characters for indexing.  
+# &oelig; = oe.  Leave this on.  At one point we should think
+# Unicode, but who knows if this is important.
+$flattenligatures = 1;
+
+# --------------------- Ignore recursive text divs -------------------
+# Ignore divs in internal texts.  This is for constructs which
+# quoted <q objects as new <text objects.  I have to admit
+# that recursive arguments make sense at a certain level, but 
+# violate my notion of documentary structures.  Recursion is a
+# great programming technique, but as a data representation it 
+# makes things hard.  Leave this ON.
+$ignoredivsinsubtext = 1;
+
+# ---------------------- SubDiv Look Ahead --------------------------
+# When looking ahead to see if you have an immediate lower div,
+# set how many lines to look.  A real XML parser would not need this.
+$LOOKHOWFAR = 10;
+
+# ---------------------- Div Head Look Ahead ------------------------
+# In a <div, how far to look ahead for a <head.  A real XML parser
+# would not need this.
+$HEADLOOKLINES = 7;
+
+# ------------------ Skip in word tags -------------------------------
+# Tags normally break words.  There may be exceptions.  To run the 
+# exception, turn on the exception and list them as patterns.  
+# Tags will not be indexed and will not break words.
+$tagexception = 1;
+@listofexempttags = ('<hi[^>]*>',
+                     '<emph[^>]*>',
+		     '<\/hi>',
+		     '<\/emph>',
+		     '<orig[^>]*>',
+                     '<\/orig>',
+		     '<sic[^>]*>',
+                     '<\/sic>',
+		     '<abbr[^>]*>',
+                     '<\/abbr>',
+		      );
+# This is ugly. I am doing this by looking for these tags with a letter
+# before and after, changing them to "_" and after I get the
+# word, deleting "_".  Leave it off unless you really need it.
+# Note that you need to construct valid perl patterns.  
+
+# -------------------- Ignore DIV0 -----------------------------------
+# <div0  These are used at time to be the root level, often to
+# include the entire document.  Let's give the option to simply
+# ignore them.  Leave it off unless you see div problems, where your
+# top level div is the whole body or text.
+$ignoredivzero = 0;
+
+# ------------------- Build ID reference table -----------------------
+# Build table for handling elements with IDs.   Leave it on.
+$BUILDREFIDTABLE = 1;
+
+# ------------------- Tags and Words to Ignore ------------------------
+# Ignore tags and words.  This is a switch and list of tag/word
+# patterns to change to spaces and ignore.  Reason: the information
+# in the tags are not to be search.  These really should be 
+# milestones ... but the general point may be useful. Calls TagWordDel
+# The listtoignore must be valid patterns.
+$ignoretagswords = 1;
+@listtoignore = ('<mw[^>]*>[^<]*<\/mw>',
+                 '<A DUMMY TO HOLD THE LIST END>');
+
+# ------------------ Hyphenated Word Joiner ----------------------------
+# Softhypen word joiner.  At this time, I'm trying to join
+# words broken by &shy;\n and possibly some additional
+# selected tags.  Could be extended.  Calls JoinHyphenWords
+$joinshywords = 1;
+
+# ------------------ Abbreviation Expander for Indexing. ---------------
+# This is to handle abbreviation tags.  I have seen two types:
+#       <abbr expan="en">&emacr;</abbr>
+#       <abbr expan="Valerius Maximus">Val. Max.</abbr>
+# For now, lets's try the first.  Calls subroutine AbbrevExpand
+$abbrevexpand = 1;
+
+# ----------------- Get Div opener and closer values -------------------
+# This is to add DIV level opener and closer values to the DIV index.
+# Should be left on once it is tinkered with
+$GetDivOpenClose = 1;
+
+#  ----------------- Set Long Word Limit  -------------------
+#  Words greater than 235 characters (bytes) cause an indexing
+#  error.  This sets a limit.  Words are then truncated to fit.
+$LONGWORDLIMIT = 128;
+}
+
+# =================================================================
+# Subroutine: getthisxpath: a simple XPATH generator for divindex
+# and subdivindex files.  Not really used, but it will spit it out
+# if $DUMPXPATHS is set in texload.cfg.  Your mileage will really
+# vary here.
+# =================================================================
+sub getthisxpath() {
+    local ($tag, $w, $genpath);
+    $tag = $_[0];
+    $tag =~ tr/A-Z/a-z/;
+    $genpath = 1;
+    if ($tag =~ /\/ ?>/) {
+	$genpath = 0;
+	}
+    elsif ($tag =~ /<\//) {
+	pop(@listofxpath);
+	$genpath = 1;
+    	}
+    elsif ($tag =~ /<\!/) {
+	$genpath = 0;
+    	}
+    elsif ($tag =~ /<\?/) {
+	$genpath = 0;
+    	}
+    elsif ($tag =~ /^</) {
+	$tag =~ s/<//;
+	$tag =~ s/>//g;	
+	$tag =~ s/ ([a-z0-9]*)="([^"]*)"/\[\@$1="$2"\]/g;
+	push (@listofxpath, $tag);
+	$genpath = 1;
+		}
+    else {
+	$genpath = 0;	
+	}
+
+    if ($genpath) {
+    	$thecurrentxpath = "/";
+        foreach $w (@listofxpath) {          # generate the current path
+             $thecurrentxpath .= "/" . $w;
+          }
+	}
+
+return;
+}
+ 
+
+		
+     
+
+##########################################################################
+############################  Notes to Self  #############################
+##########################################################################
+# I have not yet exactly matched the level 2 and 3 data for the first.  
+# I have a kludge.  Needs to be fixed.
+# Important things to think about:
+# -- Inline notes are not handled at all.  Ideally we would exempt
+#    them from processing as part of object, but as they can occur
+#    just anywhere, this is problematic.  One notion would be to simply
+#    defer evaluation of notes until you have complete the document, then
+#    write out the word index data and require structural data as another
+#    <div or <HyperDiv at the end.  This requires removing the index
+#    compression which requires byte order of index.  
+# -- XPATH calculation for SQL <DIV table:  should be easy. Something that 
+#    would  allow forward compatibility for object manipulation.  
+# -- Hyphen and in word tag spanning:  This REALLY should set a flag
+#    to join words in the word handler.  This would be easy.  If flag,
+#    wait to print the word index entry until you get the rest of the
+#    word, and then simply print the entire word with the initial 
+#    object data.  Current mechanism is ugly and won't span things
+#    like hyphen words over page breaks.  Etc.
+# -- The <DIV table is not being used.  I should set it up now to be
+#    an object table with HEADS and types, as avaiable for <sp <speaker,
+#    <lg and other interesting tags.  These would then be related to
+#    standard metadata by a join on the docid.  Probably wait for
+#    interesting data.
+# -- We really, really should have a character registration table.  Alas,
+#    I don't think so at this time.
+# -- Leave hooks for 1) word object type as an integer and 2) flexible
+#    Object Depth.  This way we could say search all except notes, search
+#    only line groups, or stage directions.  Would need a table.  Default
+#    would be search all.

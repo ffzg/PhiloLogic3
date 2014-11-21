@@ -1,0 +1,434 @@
+These are the changes made to bring the first Philologic 3 release to the 3.02 release.
+_______________________________________________________________________________________
+
+
+BASEDIR =  /philologic/development/canonical/
+
+#####################################################################
+CHANGED  philologic-v3.002/goodies/README
+ADDED    philologic-v3.002/goodies/greek2uft8.perl
+ADDED    philologic-v3.002/goodies/dlxs-utils/*
+ADDED    philologic-v3.002/goodies/virtual-normalize/*
+# -----------------------------------------------------------------
+#####################################################################
+CHANGED  philologic-v3.002/installdir/lib/philo-db.cfg
+# Added the following
+# ------------------------ SQL optimization ----------------------------
+# For SQL enabled gimme (gimme.sql) and subdocgimme (subdocgimme.sql)
+# turn on query optimization.  If this is on ($OPTIMIZESQL = 1), both programs
+# will replace the normal regexp statement with like %STRING% statements.
+# Regexp is slow in mySQL, so if you don't have regexp patterns, why run
+# it?  $SQLOPTSTRING sets the pattern for look for.  This function
+# will support mixed regexp and like functions.
+$OPTIMIZESQL = 0;
+# $SQLOPTSTRING = "[ \'a-z0-9A-Z\177-\377]*";
+# This is really only useful for large tables (30K records).  Very
+# significant performance increases can be expected on large tables.
+#-------------------------------------------------------------------
+#####################################################################
+CHANGED   philologic-v3.002/installdir/gimme.sql.in
+CHANGED   philologic-v3.002/installdir/subdocgimme.sql.plin
+# Added the following
+# =================== Optimize mySQL searches ====================
+# Optimization for mySQL searches.  By default, we are using
+# the mySQL regexp search function on strings.  We do this in
+# order to support regular expression matching for wild cards,
+# the poor man's tokenizer above, and our match all accented
+# characters convention A = a[INT-INT].  But many, even most
+# queries do not need this.  The mySQL regexp operator is slow
+# and does not benefit from indexing in mySQL.  So, the following
+# simply replaces "regexp" function with "like" if it matches
+# characters.  One could extend or restrict this this pattern as 
+# required in philo-db.cfg.   This needs to be turned ON in
+# philo-db.cfg.  It is known to work for searches and browsefields.
+# Makes a huge difference for searches on large tables.
+
+  if ($OPTIMIZESQL) {
+    if (!$SQLOPTSTRING) {
+         $SQLOPTSTRING = "[ \'a-z0-9A-Z\177-\377]*";
+         }
+    if ($query1 =~ m/regexp +"$SQLOPTSTRING"/) {
+        $query1 =~ s/regexp +"($SQLOPTSTRING)"/ like "%$1%"/g;
+        }
+    }
+# -----------------------------------------------------------------
+#####################################################################
+CHANGED philologic-v3.002/installdir/lib/philosubs.pl 
+# Added Greek HTML4 and C-H ents to &Ents2Unicode
+# Also conditionalized some of the calls:
+563,566c563,564
+<     if ($text =~ /&[\#0-9A-Za-z]*;/) {
+<         $text = &Ents2Unicode($text);
+<         $text = &EntityConvert($text);
+<         }
+---
+>       $text = &EntityConvert($text);
+> 
+1060,1063c1058
+<     if ($bf =~ /&[\#0-9A-Za-z]*;/) {
+<         $bf = &Ents2Unicode($bf);
+<         $bf = &EntityConvert($bf);
+<         }
+---
+>     $bf = &EntityConvert($bf);
+1064a1060
+>     $bf = &Ents2Unicode($bf);
+1139,1142c1135
+<     if ($bf =~ /&[\#0-9A-Za-z]*;/) {
+<       $bf = &Ents2Unicode($bf);
+<       $bf = &EntityConvert($bf);
+<       }
+---
+>     $bf = &EntityConvert($bf);
+# ---------------------------------------------------------------
+
+#####################################################################
+CHANGED philologic-v3.002/utils/xml-sgmlloader.plin
+Added: > $bunchofwords =~ s/(\&space;)/" " x length($1)/gie;
+     # Greek Entities for HTML4 and Chadwock Healey -- Charles Cooney
+Added: check for long work condition
+< 
+< # This can be no more than 235 bytes.  I'm setting it smaller here
+< # just to be safe.  This should also be set in textload.cfg and the
+< # presets below.  Just bein' paranoid.
+< if (!$LONGWORDLIMIT) {
+<       $LONGWORDLIMIT = 128;
+<       }
+< 
+1159,1165c1151
+< # Check to see if the word is longer than we want.  More than 235
+< # characters appear to cause problems in the indexer.  Truncate
+< # to the limit as set in textload.cfg
+<       if (length($theword) > $LONGWORDLIMIT) {
+<       print STDERR "LONG WORD:" . $theword . "\nTruncating for index...\n";
+<         $theword = substr($theword,0,$LONGWORDLIMIT);
+<       }
+2193,2196d2178
+< #  ----------------- Set Long Word Limit  -------------------
+< #  Words greater than 235 characters (bytes) cause an indexing
+< #  error.  This sets a limit.  Words are then truncated to fit.
+< $LONGWORDLIMIT = 128;
+# ----------------------------------------------------------------
+
+#####################################################################
+CHANGED philologic-v3.002/textload.cfg
+Added: $LONGWORDLIMIT
+< #  ----------------- Set Long Word Limit  -------------------
+< #  Words greater than 235 characters (bytes) cause an indexing
+< #  error.  This sets a limit.  Words are then truncated to fit.
+< $LONGWORDLIMIT = 200;
+# ----------------------------------------------------------------
+#####################################################################
+CHANGED philologic-v3.002/utils/xml-sgmlloader.plin
+Added: function to delete punctuation UTF-8 chars with spaces
+       for word parsing.
+51d50
+< # DeleteUnicodeWordBreakers  replaces UTF byte sequences with space.
+1074,1080c1073
+< # Now, we also know that there are Unicode characters which 
+< # we normally want to break words.  Often, these are Microsoft characters
+< # like the curly quotes. These are set in textload.cfg
+< # in @UnicodeWordBreakers. 
+< if ($HaveUnicodeWordBreakers) {
+<         $bunchofwords = &DeleteUnicodeWordBreakers($bunchofwords);
+<       }
+2060,2076d2052
+< # Subroutine: DeleteUnicodeWordBreakers ... replace UTF byte sequences
+< #             with spaces before breaking into words.  This list is 
+< #             set in textload.cfg and called only when 
+< #             $HaveUnicodeWordBreakers is set.  This may be dangerous
+< #             because you may find places where deleting this range
+< #             breaks real characters.
+< sub DeleteUnicodeWordBreakers {
+<       local ($x, $line);
+<       $line = $_[0];
+<       foreach $x (@UnicodeWordBreakers) {
+<               $line =~ s/($x)/" " x length($1)/gie;
+<               }
+< return $line;
+< }
+#####################################################################
+CHANGED philologic-v3.002/textload.cfg
+Added: list of Unicode Word breakers....
+< # ------------- UTF8 Strings to consider as word breakers -----------
+< # In SGML, these are ents.  But in Unicode, these are characters
+< # like any others.  Consult the table at:
+< # www.utf8-chartable.de/unicode-utf8-table.pl?start=8016&utf8=dec&htmlent=1
+< # to see about others.
+< $HaveUnicodeWordBreakers = 1;
+< @UnicodeWordBreakers = ('\xe2\x80\x93', # U+2013 &ndash; EN DASH
+<                        '\xe2\x80\x94', # U+2014 &mdash; EM DASH
+<                        '\xe2\x80\x98', # U+2018 &lsquo; LEFT SINGLE QUOTATION
+<                        '\xe2\x80\x99', # U+2019 &rsquo; RIGHT SINGLE QUOTATION
+<                        '\xe2\x80\x9c', # U+201C &ldquo; LEFT DOUBLE QUOTATION
+<                        '\xe2\x80\x9d', # U+201D &rdquo; RIGHT DOUBLE QUOTATION
+<                        '\xe2\x80\xb9', # U+2039 &lsaquo; SINGLE LEFT-POINTING 
+<                                        #                ANGLE QUOTATION MARK
+<                        '\xe2\x80\xba', # U+203A &rsaquo; SINGLE RIGHT-POINTING
+<                                        # ANGLE QUOTATION MARK
+<                        '\xe2\x80\xa6'  # U+2026 &hellip; HORIZONTAL ELLIPSIS
+<                       );
+
+#####################################################################
+CHANGED philologic-v3.002/textload.cfg
+Added: multiple div head option
+# ----------------------- Get Multiple Div Heads --------------------
+# Set to 0 to include only the first <div <head in the divlevel metadata
+# and tables of contents.  Set to 1 or more to get COUNT of multiple
+# Div Heads.  Set to 0 or 1 normally.
+$GetMultipleDivHeads = 1;
+
+#####################################################################
+CHANGED philologic-v3.002/utils/xml-sgmlloader.plin
+Modified sub getdivhead to read multiple div heads.....
+986,987d985
+< local ($getheadcount);
+< $getheadcount = $GetMultipleDivHeads;
+997,1000d994
+<         if ($nextline =~ /<div/i || $nextline =~ /<\/div/i ) {  
+<                 $i = $HEADLOOKLINES + 1;     # Don't go past an open or
+<                 $readmore = 0;               # close <div.
+<                 }
+1004,1028c998,1012
+<         if ($readmore) {
+<              while ($readmore) {
+<                  $lookahead += 1;
+<                  $x++;
+<                  $nextline = $INSTREAM[$lookahead];
+<                  if ($nextline =~ /<\/head>/i) {
+<                       $readmore = 0;
+<                       if ($getheadcount) {
+<                            $i = 2;
+<                            $getheadcount = $getheadcount - 1;
+<                          }
+<                       else {
+<                          $i = $HEADLOOKLINES + 1;
+<                            }
+<                       } 
+<                  elsif ($x > 10) {    # Overflow trap in case you miss </head
+<                       $readmore = 0;
+<                       $i = $HEADLOOKLINES + 1;
+<                       } 
+<                  else {
+<                       $DIVHEAD .= $nextline . " ";
+<                       }
+<                  }
+<             }
+<       }
+---
+>     }
+>     while ($readmore) {
+>         $lookahead += 1;
+>       $x++;
+>         $nextline = $INSTREAM[$lookahead];
+>         if ($nextline =~ /<\/head>/i) {
+>          $readmore = 0;
+>          }    
+>         elsif ($x > 10) {    # Overflow trap in case you miss </head
+>          $readmore = 0;
+>          }    
+>         else {
+>            $DIVHEAD .= $nextline . "\n";
+>     }
+> }
+
+#####################################################################
+CHANGED philologic-v3.002/installdir/crapser-egrep-2field.plin
+        Added support for "BUTNOT".  The internal syntax is "|-".
+        Thus, amo*|-amour* will match all words starting with 
+        amo but not those matching amour*.  Functions as a secondary
+        word vector filter.  
+        Also removed some ancient postfix to iso code and updated
+        the Y character match to get Unicode Y.
+A pretty complete modification.  Needs testing.
+#####################################################################
+CHANGED philologic-v3.002/cgi-bin/search3t.plin
+       Added a simple convert of BUTNOT to "|-" for searching.
+# Check to see if we have the BUTNOT operator in the $word search.  
+# We're not going to do too much error checking.
+if ($word =~ /\+BUTNOT\+/) {
+        if ($word =~ /\+BUTNOT\+*$/) {
+                print "<p>The BUTNOT operator must be followed by a
+                          word or pattern";
+                print &kwicfooter;
+                exit 0;
+                }
+        $word =~ s/\++BUTNOT\++/\|\-/g;
+        }
+#####################################################################
+ADDED philologic-v3.002/utils/dbbiblio.plin 
+ADDED philologic-v3.002/utils/dbtextload.plin
+        Very simple DocBook loaders.  Proof of concept.  We could
+        write more extensive loaders and handlers....
+#####################################################################
+ADDED philologic-v3.002/utils/plainbiblio.plin
+ADDED philologic-v3.002/utils/plaintextload.plin
+        Loaders for Gutenberg and Liberliber plaintexts.  Requires
+        precoversion to Unicode.  
+#####################################################################
+CHANGED philologic-v3.002/installdir/lib/philo-db.cfg
+        Commented out # $PASSWD = ""; which should be set in
+        /etc/philologic/philologic.cfg
+        Added TextType variable
+# ---------------------------- TextType --------------------------------
+# This should be off for non ARTFL TEI encoded documents.  philosubs.pl has
+# simple output handling for "plaintext", "docbook", "ate" and "artfltei".  
+# If you have loaded a database with --texttype= set to one of these 
+# values, you should set  $TextType to the same.  Lower case values only.  
+# Note that "artfltei" is NOT a philoload option, but is used here to
+# invoke the ARTFL specific TEI note/reference handler.  This is to
+# simplify ARTFL notehandling. 
+$TextType = "artfltei";
+####################################################################
+CHANGED philologic-v3.002/installdir/lib/philosubs.pl
+        Added specific replacements for refresolver:
+# ATEnotetext:        build a page backlink from a note as specified in ATE
+# ATEnotelinker:      build a link to the notetext as specified in ATE
+# ReadReferenceTable: read in the general reference table
+# ARTFLresolver:      build two way links, <ref/<note as specified in ARTFL
+        Added ObjectFormat support for $TextType.
+# Added  PopNoteFormat
+
+######################################################################
+CHANGED philologic-v3.002/installdir/lib/philo-db.cfg
+> #--------------------------- PopNotes ---------------------------------
+> # This invokes the super cool pop-up note display scheme that Russ
+> # cooked up.  It works only for ARTFL TEI and ATE documents where notes
+> # are encoded in distinct divs and particular objects.  Default is 
+> # OFF (0).  If you turn this feature on, make sure that your 
+> # Results_Header.html has fully expressed PATHS for 
+> # <!-- These are for the pop-in notes -->
+> # <script src="/philologic/prototype.lite.js"></script>
+> # <script src="/philologic/moo.ajax.js"></script>
+> # <script src="/philologic/notes.js"></script>
+> # and that these are uncommented.
+> $DisplayPopNotes = 0;
+> # -------------------------------------------------------------------
+
+
+BASEDIR =  /philologic/development/canonical/
+
+# -----------------------------------------------------------------
+FOR Dictionary-style disply in concheadline and getKWICtitle
+#####################################################################
+CHANGED  philologic-v3.002/installdir/lib/philo-db.cfg
+# Added the following
+# -------------------------------------------------------------------
+# Dictionary display mode:  If you are running a dictionary, the title
+#       formats on the Kwic and Conc reports may be imrpoved by setting
+#       the below to 1.
+# -------------------------------------------------------------------
+#$UseDicoDisplays = 0; 
+#####################################################################
+CHANGED  philologic-v3.002/installdir/lib/philosubs.pl
+	-- Change getKWICtitle and concheadline functions to be switchers,
+	calling getKWICtitlestandard or getKWICtitledico and concheadlinestandard
+	or concheadlineidoc depending on how $UseDicoDisplays is set in 
+	philo-db.cfg
+#####################################################################
+
+# -----------------------------------------------------------------
+FOR The option to skip forms generation on a load
+#####################################################################
+CHANGED  philologic-v3.002/etc/philoload.plin
+# Added the following
+# Unless they have requested not on the command line with --skipforms
+# run the form generation script
+    unless ($skipforms) {
+          system ("$IMAGE/lib/makeforms_gold.pl");
+    }
+
+Also changed a couple parts that describe the options on load, and the
+part that imports commandline variables.
+
+#####################################################################
+
+
+
+# -----------------------------------------------------------------
+FOR The cronjob to delete hitlists
+#####################################################################
+ADDED  philologic-v3.002/goodies/delete-hitlists-cron
+ADDED  philologic-v3.002/goodies/delete-hitlists-cron/blowhitlists.sh
+ADDED  philologic-v3.002/goodies/delete-hitlists-cron/README
+#####################################################################
+
+
+# -----------------------------------------------------------------
+FOR Correcting a bug that can make search form generation hang
+#####################################################################
+CHANGED  philologic-v3.002/installdir/makeforms_gold.plin
+# Added this conditional around the example finder
+# Try 100 times to get a random example
+
+        while ($bibexample eq '' && $trialcounter < 100) {
+            $trialcounter++;
+            $randomindex = rand $bibindex;
+            $bibexample = $bibarray[$randomindex][$colindex];
+        }
+#####################################################################
+
+# -----------------------------------------------------------------
+FOR Tarball generation switch
+#####################################################################
+CHANGED  philologic-v3.002/etc/philoload
+	-- Added a check before making tarball
+CHANGED  philologic-v3.002/etc/philologic.cf
+	-- Added this:
+# The Affero license mandates that you make available the source of 
+# your application. If you like, we can try to generate a tarball
+# for you and place it in the webspace. This is disabled because it
+# doesn't always work correctly, so you may need to make these files
+# available manually -- but you may also have luck enabling it.
+$CreateTarball = 0;
+#####################################################################
+
+# -----------------------------------------------------------------
+FOR Dictionary linking
+#####################################################################
+CHANGED  philologic-v3.002/lib/philosubs.pl
+	-- Amended:
+ if ($LINKDICT) {
+                    $navin =~ s/<body(.*?)>/<body\1  onkeypress="if \(dictOn\) checkKeyPressed\(event\);">/gi;
+                }
+#####################################################################
+
+
+# -----------------------------------------------------------------
+FOR Arrows on top and bottom of object navigation
+#####################################################################
+CHANGED  philologic-v3.002/cgi-bin/contextualize.pl
+CHANGED  philologic-v3.002/cgi-bin/getobject.pl
+	-- Lots of changes to these two files.... see:
+	http://artfl.uchicago.edu/wickedwiki/index.php/DSAL::PhiloDictionaryHacks
+#####################################################################
+
+# -----------------------------------------------------------------
+FOR Philoload collision detector
+#####################################################################
+CHANGED  philologic-v3.002/etc/philoload.plin
+	-- Added some code at top and bottom:
+
+# Check to see if the lock file exists.... if so, die
+# Otherwise, create it. 
+
+if (-e $PHILOTMP . "/philo.lock") {
+    die "The lockfile " . $PHILOTMP . "/philo.lock has been detected. Philoload might already be running, and we can only have one version running at a time. Examine the lock file. It s
+hould contain the PID of the philoload process that created it. If that process isn't running anymore, it probably exited abnormally and you can delete the lock file and re-run your phi
+loload command.";
+} else {
+    open (LOCK, ">$PHILOTMP/philo.lock");
+    print LOCK $$ . "\n";
+    close LOCK;
+}
+
+then at the bottom:
+
+$res = `rm $PHILOTMP/philo.lock`;
+
+#####################################################################
+
+
+
+
+

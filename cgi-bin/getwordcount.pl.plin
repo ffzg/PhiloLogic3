@@ -1,0 +1,114 @@
+#!@PERL@ -T
+# -*- perl -*-
+# @configure_input@
+#
+# $Id: getwordcount.pl.plin,v 2.10 2004/05/28 18:43:02 o Exp $
+#
+# philologic 2.8 -- TEI XML/SGML Full-text database engine
+# Copyright (C) 2004 University of Chicago
+# 
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the Affero General Public License as published by
+# Affero, Inc.; either version 1 of the License, or (at your option)
+# any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# Affero General Public License for more details.
+# 
+# You should have received a copy of the Affero General Public License
+# along with this program; if not, write to Affero, Inc.,
+# 510 Third Street, Suite 225, San Francisco, CA 94107 USA.
+
+# Documentation to get here..... tho's this is really simple.  MVO
+# To hook this up, put the following in philosubs.pl
+#    $PHILOGETWORDCOUNT = $PHILOCGI . "/getwordcount.pl";
+#    $getcount = "<a href=\"$PHILOGETWORDCOUNT" . "?" . $dbname . "." . $n;
+#    $getcount .= "\">";
+#    $ret .= " [" . $getcount . "word count</a>]";
+
+$PHILOSITECFG = "${prefix}/etc/philologic";
+
+$QS = $ENV{'QUERY_STRING'};
+($dbname, $doc, $sortorder) = split ('\.', $QS);
+
+do "$PHILOSITECFG/dbnames";
+$SYSTEM_DIR=$dbnames{"$dbname"};
+
+do "$PHILOSITECFG/philologic.cfg";
+
+unshift (@INC, $SYSTEM_DIR . "lib");
+require "philosubs.pl";
+
+$COUNTFILE = $SYSTEM_DIR . "frequencies/wordfreqdoc/" . $doc . ".rawfreq";
+#$SORTARG = " -T " . $PHILOTMP . " +1rn -0 ";
+$SORTARG = " -T " . $PHILOTMP . " -k 2,2rn -k 1,1 ";
+$SORTTEMPFILE = $PHILOTMP . "/philosorttemp." . "$$";
+$PHILOGETWORDCOUNT = $PHILOCGI . "/getwordcount.pl";
+
+
+print &mkTitle;
+
+if (-s $COUNTFILE) {
+	print "<h3>" . &getbiblioLine($doc, "link") . "</h3></center>\n";
+	print "<center><h2>" . $philomessage[227] . "</h2></center>\n";
+	}
+else {
+	print sprintf($philomessage[228], $doc);
+	print &kwicfooter;
+	exit(0);
+}
+
+open (TTFILE, $COUNTFILE);
+	while ($linin = <TTFILE>) {
+		if ($linin =~ /ZZZ:/) {
+			$linin =~ s/\n//;
+			if ($linin =~ /TYPECOUNT/) {
+				$typecount = $linin;
+				$typecount =~ s/ZZZ:TYPECOUNT //;
+				}
+			else {
+				$tokencount = $linin;
+				$tokencount =~ s/ZZZ:TOKENCOUNT //g;
+				}
+			}			
+		else {
+			@results = split(" ", $linin);
+			$outbuffer .= "$results[0] $results[1] \n";
+		}
+	}
+close(TTFILE);
+print $philomessage[229] . " <tt>$tokencount</tt> " . $philomessage[230] . " <tt>$typecount</tt>.<br>";
+$resort = "<a href=\"$PHILOGETWORDCOUNT" . "?" . $dbname . "." . $doc;
+if (!$sortorder) {
+	$resort .= ".1";
+	}
+$resort .= "\">";
+if (!$sortorder) {
+	print $philomessage[231] . " ";
+	print "[" . sprintf($philomessage[232], $resort) . "</a>].";
+	}
+else {
+	print $philomessage[233];
+	print " [" . sprintf($philomessage[234], $resort) . "</a>].";
+}
+
+if ($sortorder) {
+    open(MVOSORTED, "| sort $SORTARG > $SORTTEMPFILE");
+    print MVOSORTED $outbuffer;
+    close(MVOSORTED);
+    $outbuffer = "";
+    open (TTFILE, "$SORTTEMPFILE");
+    while ($linin = <TTFILE>) {
+		$outbuffer .= $linin;
+    	}	 
+    system ("rm -f $SORTTEMPFILE");
+}
+
+print "<p>";
+print "<pre>\n";
+print $outbuffer;
+print "</pre>";
+print &kwicfooter;
+exit (0);

@@ -1,0 +1,53 @@
+$Id: ChangeLog,v 2.16 2004/11/16 00:58:30 o Exp $
+
+2004-11-15  Orion Buckminster Montoya  <orion@philologic.uchicago.edu>
+	* added a bunch of files:artfl_sortedkwic.pl, dublin.extract.pl,
+	philohistory.pl, theme_rheme.pl.  goodies/ directory has various
+	things that are cool and some people might want; see README there.
+	
+2004-08-23  Orion Buckminster Montoya  <orion@philologic.uchicago.edu>
+	* added boilerplate.plin to give desired format for new files
+
+2004-07-08  Orion Buckminster Montoya  <orion@philologic.uchicago.edu>
+	* some fixes to egrep calls to embrace non-GNU versions
+	* default PATH may now be set in /etc/philologic/philologic.cfg
+	* halfway fixes of mysql functionality; --sqlpass= option to
+	  philoload lets you specify your sql password for automatic
+	  loads.
+	* But right now MySQL metadata handling is known not to co-exist
+	  with fulltext searching.
+	* I think it's fair to say Solaris support is broken, if it
+	  was ever working
+	
+2004-06-30  Orion Buckminster Montoya  <orion@philologic.uchicago.edu>
+	* philoload now copies original source texts to the database
+	image tree so that we don't have to worry about permissions,
+	changes or deletions in the location from which it was loaded
+	* new --linksourcetexts option to philoload stops this behavior;
+	useful if you have a huge amount of text and not a lot of space, 
+	and you promise not to make any changes to it
+	* fixes to nserver.pl that should help it not refuse connections
+	from genuine localhost while still refusing connections from 
+	remote hosts
+
+2004-05-28  Orion Buckminster Montoya  <orion@philologic.uchicago.edu>
+
+	* search3 is now functional and the default engine.
+	* Moved installation destination from /var/philologic 
+	to /var/lib/philologic for better adherence to
+	Filesystem Hierarchy Standard
+	* gave up on fixing 'sort' commands to work with Solaris sort:
+	you must use GNU sort or something else that's not braindead
+	* new dependencies: GNU ld (binutils), GNU sort (coreutils)
+	(GNU/Linux systems will, of course, have these, but e.g. 
+	Solaris doesn't by default).
+
+2004-05-14  Orion Buckminster Montoya  <orion@philologic.uchicago.edu>
+
+	* Makefiles (all) now honor CFLAGS passed to ./configure
+	* Makefile.in creates databases/, work/ and STATE on install
+	* etc/philoload.pl.in now clean up work/ and STATE/ so that 
+	multiple users may load databases without headaches
+	* etc/philoload.pl.in new option --dontclean prevents removal
+	of work/ and STATE/, which aids in diagnostics but probably
+	shuts out other users

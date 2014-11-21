@@ -1,0 +1,13 @@
+This NServer startup kit can be used to make sure that NServer starts
+on Startup for Mac OS X machines running PhiloLogic.
+
+To install, click on the NServer directory and move it to
+/Library/StartupItems/ or open up the Terminal application and type
+the following at the command-line prompt:
+
+cd /wherever/philologic/is/NSERVER_OSX/
+sudo mv NServer /Library/StartupItems/
+
+Be sure to make the startup script executable or it won't work!
+
+sudo chmod +x /Library/StartupItems/NServer/NServer
