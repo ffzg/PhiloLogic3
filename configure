@@ -2910,7 +2910,7 @@ fi
 ## Hack to test if GCC version is 4.4 or lower
 GCCVERSION=`$CC -dumpversion`
 echo 'checking for gcc version...' $GCCVERSION
-GCCTEST=`expr 4.5 \<= $GCCVERSION`
+GCCTEST=`expr 4.9.2 \<= $GCCVERSION`
 if (( GCCTEST == 1 )); then
 echo 'configure: error: PhiloLogic only compiles on GCC 4.4.x or older.'
 echo 'Please change your default compiler. This can be done with the following command: export CC=/path/to/compiler'
@@ -6407,9 +6407,9 @@ case $host in
 	DEFAULT_GROUP="admin"
         ;;
         *-*-*linux*)
-        PH_LDFLAGS="-Wl,--export-dynamic"
+        PH_LDFLAGS="-Wl"
 	PH_LDMODULEFLAGS="-shared"
-	PH_LDSEARCHFLAGS="--export-dynamic"
+	PH_LDSEARCHFLAGS=""
 	PH_PIC="-fPIC"
 	PH_MODULETARGET="libunpack_e.so"
 	PH_BUILDENV=""
