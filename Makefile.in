@@ -94,9 +94,10 @@ destructive-uninstall:
 	rm -f @bindir@/search3
 
 
-load toms indices gimmedb gimme full-install:  preparations work/loader work/links.done work/memos.exists
-		(cd work; SYSTEM_DIR=`pwd`/; export SYSTEM_DIR; PATH=.:`pwd`/..:`pwd`/../utils:`pwd`/../toms:`pwd`/../pack:`pwd`/../crapser:../installdir:../gimme:$(PATH); export PATH; LANG=; LC_ALL=;\
-		 loader $@ 2>&1 | tee -a LOADER.LOG)
+#load toms indices gimmedb gimme full-install:  preparations work/loader work/links.done work/memos.exists
+#		(cd work; SYSTEM_DIR=`pwd`/; export SYSTEM_DIR; PATH=.:`pwd`/..:`pwd`/../utils:`pwd`/../toms:`pwd`/../pack:`pwd`/../crapser:../installdir:../gimme:$(PATH); export PATH; LANG=; LC_ALL=;\
+#		 loader $@ 2>&1 | tee -a LOADER.LOG)
+#
 
 preparations: programs work/loader work/links.done work/memos.exists
 
