@@ -24,6 +24,7 @@ install: all
 #	@INSTALL@ nserver @init_d@
 	@NSERVER_INSTALL@
 #	@LN_S@ -f @init_d@/nserver @boot_init_d@/S99nserver
+	mkdir -p @boot_init_d@
 	@NSERVER_ACTIVATE@
 	@INSTALL@ -d @localstatedir@/lib/philologic/init.d
 
