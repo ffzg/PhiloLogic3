@@ -70,7 +70,7 @@ install:
 	@INSTALL@ -d -g @authuser_group@ -m u=rwx,g=rwx,o=rx @localstatedir@/lib/philologic/STATE
 	@INSTALL@ -d -g @authuser_group@ -m u=rwx,g=rwx,o=rx @localstatedir@/lib/philologic/databases
 #	@INSTALL@ -g @authuser_group@ -m u=rwx,g=rwx,o=rx $(INSTALL_FILES) @localstatedir@/lib/philologic
-	cp -R . @localstatedir@/lib/philologic
+	cp -R * @localstatedir@/lib/philologic
 	chgrp -R @authuser_group@ @localstatedir@/lib/philologic/
 	chmod -R g+rwX,o+rX @localstatedir@/lib/philologic/
 	touch @localstatedir@/lib/philologic/files
