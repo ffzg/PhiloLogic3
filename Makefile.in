@@ -77,7 +77,7 @@ install:
 	cp dbspecs2.h.stubs pack/dbspecs2.h
 	@INSTALL@ -d -g @authuser_group@ -m u=rwx,g=rwx,o=rx @web_path@
 	cd cgi-bin/ && make install
-	cd etc/ && make install
+	cd etc/ && make install prefix=${prefix}
 	cd search3 && make install
 	@INSTALL@ -d -m a=rwx @localstatedir@/lib/philologic/hitlists
 	@NSERVER_LOCATION@/nserver stop
