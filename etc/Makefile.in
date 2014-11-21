@@ -20,13 +20,13 @@ install: all
 	@INSTALL@ -g @authuser_group@ -m u=rwx,g=rwx,o=rx philologic.cfg @sysconfdir@/philologic/
 	@INSTALL@ -g @authuser_group@ -m u=rwx,g=rwx,o=rx dbnames @sysconfdir@/philologic/
 	@INSTALL@ -d -g @authuser_group@ -m u=rwx,g=rwx,o=rx @localstatedir@/lib/philologic/etc/
+#	@INSTALL@ -d -g @authuser_group@ -m u=rwx,g=rwx,o=rx @init_d@
 	@INSTALL@ $(SOURCES) @localstatedir@/lib/philologic/etc/
 #	@INSTALL@ nserver @init_d@
 	@NSERVER_INSTALL@
 #	@LN_S@ -f @init_d@/nserver @boot_init_d@/S99nserver
 	mkdir -p @boot_init_d@
 	@NSERVER_ACTIVATE@
-	@INSTALL@ -d @localstatedir@/lib/philologic/init.d
 
 
 clean:
