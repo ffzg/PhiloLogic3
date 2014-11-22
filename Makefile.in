@@ -70,15 +70,16 @@ install:
 	@INSTALL@ -d -g @authuser_group@ -m u=rwx,g=rwx,o=rx @localstatedir@/lib/philologic/STATE
 	@INSTALL@ -d -g @authuser_group@ -m u=rwx,g=rwx,o=rx @localstatedir@/lib/philologic/databases
 #	@INSTALL@ -g @authuser_group@ -m u=rwx,g=rwx,o=rx $(INSTALL_FILES) @localstatedir@/lib/philologic
+	mkdir -p @bindir@ || true
 	cp -R * @localstatedir@/lib/philologic
 	chgrp -R @authuser_group@ @localstatedir@/lib/philologic/
 	chmod -R g+rwX,o+rX @localstatedir@/lib/philologic/
 	touch @localstatedir@/lib/philologic/files
 	cp dbspecs2.h.stubs pack/dbspecs2.h
 	@INSTALL@ -d -g @authuser_group@ -m u=rwx,g=rwx,o=rx @web_path@
-	cd cgi-bin/ && make install
-	cd etc/ && make install prefix=${prefix}
-	cd search3 && make install
+	cd cgi-bin/ && make install prefix=${prefix} exec_prefix=${exec_prefix}
+	cd etc/ && make install prefix=${prefix} exec_prefix=${exec_prefix}
+	cd search3 && make install prefix=${prefix} exec_prefix=${exec_prefix}
 	@INSTALL@ -d -m a=rwx @localstatedir@/lib/philologic/hitlists
 	@NSERVER_LOCATION@/nserver stop
 	@NSERVER_LOCATION@/nserver start
@@ -94,10 +95,10 @@ destructive-uninstall:
 	rm -f @bindir@/search3
 
 
-#load toms indices gimmedb gimme full-install:  preparations work/loader work/links.done work/memos.exists
-#		(cd work; SYSTEM_DIR=`pwd`/; export SYSTEM_DIR; PATH=.:`pwd`/..:`pwd`/../utils:`pwd`/../toms:`pwd`/../pack:`pwd`/../crapser:../installdir:../gimme:$(PATH); export PATH; LANG=; LC_ALL=;\
-#		 loader $@ 2>&1 | tee -a LOADER.LOG)
-#
+load:  preparations work/loader work/links.done work/memos.exists
+		(cd work; SYSTEM_DIR=`pwd`/; export SYSTEM_DIR; PATH=.:`pwd`/..:`pwd`/../utils:`pwd`/../toms:`pwd`/../pack:`pwd`/../crapser:../installdir:../gimme:$(PATH); export PATH; LANG=; LC_ALL=;\
+		 loader $@ 2>&1 | tee -a LOADER.LOG)
+
 
 preparations: programs work/loader work/links.done work/memos.exists
 

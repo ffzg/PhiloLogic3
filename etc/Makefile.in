@@ -20,7 +20,7 @@ install: all
 	@INSTALL@ -g @authuser_group@ -m u=rwx,g=rwx,o=rx philologic.cfg @sysconfdir@/philologic/
 	@INSTALL@ -g @authuser_group@ -m u=rwx,g=rwx,o=rx dbnames @sysconfdir@/philologic/
 	@INSTALL@ -d -g @authuser_group@ -m u=rwx,g=rwx,o=rx @localstatedir@/lib/philologic/etc/
-#	@INSTALL@ -d -g @authuser_group@ -m u=rwx,g=rwx,o=rx @init_d@
+	@INSTALL@ -d -g @authuser_group@ -m u=rwx,g=rwx,o=rx @init_d@
 	@INSTALL@ $(SOURCES) @localstatedir@/lib/philologic/etc/
 #	@INSTALL@ nserver @init_d@
 	@NSERVER_INSTALL@
