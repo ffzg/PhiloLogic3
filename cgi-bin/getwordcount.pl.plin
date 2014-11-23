@@ -28,7 +28,7 @@
 #    $getcount .= "\">";
 #    $ret .= " [" . $getcount . "word count</a>]";
 
-$PHILOSITECFG = "${prefix}/etc/philologic";
+$PHILOSITECFG = "@sysconfdir@/philologic";
 
 $QS = $ENV{'QUERY_STRING'};
 ($dbname, $doc, $sortorder) = split ('\.', $QS);

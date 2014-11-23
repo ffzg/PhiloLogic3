@@ -21,7 +21,7 @@
 # along with this program; if not, write to Affero, Inc.,
 # 510 Third Street, Suite 225, San Francisco, CA 94107 USA.
 
-$PHILOSITECFG = "${prefix}/etc/philologic";
+$PHILOSITECFG = "@sysconfdir@/philologic";
 
 do "$PHILOSITECFG/dbnames";
 
